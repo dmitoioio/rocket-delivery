@@ -22,6 +22,13 @@ import { err } from '../errors.js';
 
 export const name = 'supabase';
 
+/**
+ * Демо-доступів у продакшені немає — і це не «забули додати», а вимога:
+ * підказка на екрані логіна з'являється, лише якщо адаптер її віддає (B18).
+ * Експортуємо явний null, щоб збірка не попереджала про відсутній експорт.
+ */
+export const demoCredentials = null;
+
 /** @type {import('@supabase/supabase-js').SupabaseClient|null} */
 let client = null;
 

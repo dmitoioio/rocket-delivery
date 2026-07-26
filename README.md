@@ -1,5 +1,7 @@
 # 🚀 Rocket Delivery
 
+**Демо:** https://dmitoioio.github.io/rocket-delivery/
+
 Курʼєрський застосунок для платформи локальних новин і бізнесу **cstllife** (м. Олика, Волинська обл.).
 
 Кожен бізнес на cstllife (суші, піца, продукти, квіти) потребує доставки. Rocket Delivery — це один спільний застосунок, у який падають замовлення від усіх цих бізнесів і який ведуть штатні курʼєри на електроскутерах.
@@ -88,7 +90,39 @@ npm run lint
 npm run build            # dist/, ~81 КБ
 ```
 
-Для продакшн-збірки: `cp .env.example .env`, заповнити ключі Supabase, `VITE_APP_ENV=production npm run build`. Деплой на Netlify — [`netlify.toml`](netlify.toml).
+Один самодостатній HTML-файл (щоб надіслати без деплою): `npm run build:standalone` → `dist-standalone/rocket-delivery.html`.
+
+---
+
+## Деплой
+
+### GitHub Pages — https://dmitoioio.github.io/rocket-delivery/
+
+Деплоїться автоматично при пуші в `main` через [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml).
+
+**Разове налаштування** (робиться один раз, вручну в інтерфейсі GitHub):
+
+1. Settings → Pages → **Source: GitHub Actions**
+2. Запушити в `main` — або запустити workflow вручну на вкладці Actions
+
+> ⚠️ Pages віддає **demo-збірку**, не продакшн. GitHub Pages — статичний хостинг без бекенду, а реального Supabase поки немає: продакшн-збірка дала б білий екран із помилкою «Supabase не налаштований». Тому на Pages іде моковий адаптер із повною бізнес-логікою в памʼяті браузера. Реальних даних за цією адресою немає, тож демо-доступи там нічого не захищають.
+
+### Продакшн
+
+```bash
+cp .env.example .env          # заповнити ключі Supabase
+VITE_APP_ENV=production npm run build
+```
+
+Netlify налаштований у [`netlify.toml`](netlify.toml). У продакшн-збірці мокового адаптера немає взагалі — CI перевіряє це трьома окремими кроками.
+
+### Три середовища
+
+| `VITE_APP_ENV` | Бекенд | Де |
+|---|---|---|
+| не задано | моковий | Локальна розробка |
+| `demo` | моковий | GitHub Pages |
+| `production` | Supabase | Реальний деплой |
 
 ---
 

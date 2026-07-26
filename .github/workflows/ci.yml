@@ -21,27 +21,58 @@ jobs:
       - name: Форматування
         run: npm run format:check
 
-      - name: Збірка
-        run: npm run build
+      - name: Лінт
+        run: npm run lint
 
       - name: Тести
         run: npm test
 
-      # Захист від найдорожчої помилки: секрет у публічному бандлі.
-      # service_role-ключ Supabase — це повний доступ до бази в обхід RLS.
-      - name: Перевірка, що секрети не потрапили в бандл
+      - name: Збірка demo
+        run: npm run build
+        env:
+          VITE_APP_ENV: demo
+
+      - name: Збірка в один файл
+        run: npm run build:standalone
+
+      # ── Перевірки продакшн-збірки ─────────────────────────────────────────
+      # Саме production-бандл потрапляє до реальних курʼєрів і реальної бази,
+      # тож перевіряємо його, а не demo. У demo-збірці моковий адаптер
+      # із демо-доступами присутній свідомо: за ним немає жодних реальних
+      # даних (див. scripts/config.mjs).
+      - name: Продакшн-збірка
+        run: npm run build
+        env:
+          VITE_APP_ENV: production
+          VITE_SUPABASE_URL: https://example.supabase.co
+          VITE_SUPABASE_ANON_KEY: ci-placeholder
+
+      # Найдорожча можлива помилка: service_role-ключ дає повний доступ
+      # до бази в обхід RLS
+      - name: Секретів у бандлі немає
         run: |
           if grep -rIlE 'service_role|SUPABASE_SERVICE_ROLE|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}' dist/ 2>/dev/null; then
-            echo "::error::У dist/ знайдено те, що схоже на секретний ключ. Див. docs/05-roles-auth-rls.md"
+            echo "::error::У продакшн-бандлі знайдено те, що схоже на секретний ключ. Див. docs/05-roles-auth-rls.md"
             exit 1
           fi
-          echo "OK — секретів у бандлі не знайдено"
+          echo "OK"
 
-      # Демо-креденшели прототипу не мають потрапити в продакшн-збірку (баг B18)
-      - name: Перевірка демо-креденшелів
+      # B18: демо-доступи не мають потрапляти до реальних користувачів.
+      # Ця перевірка вже одного разу впіймала реальний витік — вони
+      # продублювались в екрані логіна в обхід підміни адаптера.
+      - name: Демо-доступів у продакшн-бандлі немає
         run: |
           if grep -rIlE 'Skuter2607|RocketBoss26' dist/ 2>/dev/null; then
-            echo "::error::У dist/ знайдено демо-паролі прототипу. Баг B18 у docs/09-audit.md"
+            echo "::error::У продакшн-бандлі знайдено демо-паролі. Баг B18 у docs/09-audit.md"
             exit 1
           fi
-          echo "OK — демо-креденшелів у бандлі не знайдено"
+          echo "OK"
+
+      # Моковий адаптер не має існувати в продакшн-збірці взагалі
+      - name: Мокового адаптера в продакшн-бандлі немає
+        run: |
+          if grep -rIl 'Суші Мар' dist/ 2>/dev/null; then
+            echo "::error::У продакшн-бандлі знайдено насіннєві дані мокового адаптера"
+            exit 1
+          fi
+          echo "OK"

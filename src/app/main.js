@@ -47,9 +47,13 @@ function boot() {
 
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
-  if (process.env.VITE_APP_ENV !== 'production') return;
+  // Локальна розробка без SW: інакше він кешує оболонку й ховає зміни
+  const env = process.env.VITE_APP_ENV;
+  if (env !== 'production' && env !== 'demo') return;
+
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {
+    // Відносний шлях: на GitHub Pages scope — це підкаталог, не корінь
+    navigator.serviceWorker.register('./sw.js').catch(() => {
       /* PWA-офлайн необовʼязковий для роботи застосунку */
     });
   });

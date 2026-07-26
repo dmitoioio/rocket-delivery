@@ -1,0 +1,62 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # Дозволяє задеплоїти вручну з вкладки Actions, не чекаючи пушу
+  workflow_dispatch:
+
+# Потрібно для публікації на Pages через Actions
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Один деплой за раз; новий пуш не скасовує вже початий
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # ── Збірка demo, а не production ──────────────────────────────────────
+      # GitHub Pages — статичний хостинг без бекенду. Поки немає реального
+      # Supabase, production-збірка дала б білий екран із помилкою
+      # «Supabase не налаштований». Тому Pages віддає demo-збірку з моковим
+      # адаптером: вона показує повністю робочу бізнес-логіку в памʼяті
+      # браузера. Це свідоме рішення, а не недогляд.
+      - name: Збірка demo
+        run: npm run build
+        env:
+          VITE_APP_ENV: demo
+
+      # GitHub Pages інакше проганяє все через Jekyll і ігнорує деякі файли
+      - name: Вимкнути Jekyll
+        run: touch dist/.nojekyll
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

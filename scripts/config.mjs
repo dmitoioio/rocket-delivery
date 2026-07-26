@@ -1,4 +1,4 @@
-/** Спільна конфігурація збірки для build.mjs і dev.mjs. */
+/** Спільна конфігурація збірки для build.mjs, dev.mjs і standalone.mjs. */
 
 /**
  * Змінні середовища, які МОЖНА вбудовувати в бандл.
@@ -16,14 +16,29 @@ const PUBLIC_ENV = [
   'VITE_APP_ENV',
 ];
 
+/**
+ * Три середовища, а не два:
+ *
+ *   development — локальна розробка, моковий бекенд
+ *   demo        — GitHub Pages: моковий бекенд, але це публічна адреса.
+ *                 Реальних даних за ним немає, тож демо-доступи тут
+ *                 нічого не захищають і нічим не ризикують.
+ *   production  — реальний Supabase. Демо-адаптера в бандлі немає взагалі,
+ *                 і CI це перевіряє (B18).
+ */
 export function isProduction() {
   return process.env.VITE_APP_ENV === 'production';
 }
 
+export function isDemo() {
+  return process.env.VITE_APP_ENV === 'demo';
+}
+
 /**
  * Який адаптер даних потрапить у бандл.
- * Моковий адаптер містить демо-доступи й повну бізнес-логіку в памʼяті —
- * у продакшн-збірку він не потрапляє взагалі.
+ * Supabase — тільки для production. Скрізь інде моковий: він містить
+ * повну бізнес-логіку в памʼяті й дозволяє показати робочий застосунок
+ * до появи реальної схеми.
  */
 export function adapterPath() {
   return isProduction() ? 'src/lib/adapters/supabase.js' : 'src/lib/adapters/mock.js';

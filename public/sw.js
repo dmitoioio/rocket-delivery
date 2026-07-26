@@ -4,10 +4,13 @@
  * Кешуємо ТІЛЬКИ оболонку застосунку. Дані — ніколи: несвіжий статус
  * замовлення гірший за відсутність даних. Курʼєр, який бачить закешовану
  * чергу пʼятихвилинної давності, поїде за замовленням, якого вже немає.
+ *
+ * Усі шляхи відносні до scope: на GitHub Pages застосунок живе
+ * в підкаталозі, а не в корені домену.
  */
 
-const CACHE = 'rocket-shell-v1';
-const SHELL = ['/', '/index.html', '/app.js', '/app.css', '/manifest.json'];
+const CACHE = 'rocket-shell-v2';
+const SHELL = ['./', './index.html', './app.js', './app.css', './manifest.json'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -35,7 +38,7 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   // Запити до API не кешуються за жодних умов
-  if (url.pathname.startsWith('/rest/') || url.pathname.startsWith('/auth/')) return;
+  if (url.pathname.includes('/rest/') || url.pathname.includes('/auth/')) return;
 
   // Оболонка: спершу мережа, кеш як фолбек — щоб не залипнути на старій версії
   event.respondWith(
@@ -45,6 +48,10 @@ self.addEventListener('fetch', (event) => {
         caches.open(CACHE).then((cache) => cache.put(request, copy));
         return response;
       })
-      .catch(() => caches.match(request).then((hit) => hit || caches.match('/index.html')))
+      .catch(() =>
+        caches
+          .match(request)
+          .then((hit) => hit || caches.match(new URL('./index.html', self.registration.scope)))
+      )
   );
 });

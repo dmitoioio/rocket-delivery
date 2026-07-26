@@ -9,8 +9,20 @@
     />
     <meta name="theme-color" content="#F2F2F5" />
     <title>Rocket Delivery</title>
-    <link rel="manifest" href="/manifest.json" />
-    <link rel="stylesheet" href="/app.css" />
+
+    <!-- Усі шляхи ВІДНОСНІ: на GitHub Pages застосунок живе в підкаталозі
+         (/rocket-delivery/), і абсолютні шляхи вели б у корінь домену -->
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="stylesheet" href="./app.css" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+
+    <!-- Вбудований favicon: інакше браузер сам піде по /favicon.ico
+         у корінь домену — а на GitHub Pages там нічого немає -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23E8480F'/%3E%3Cpath d='M16 5c4.4 4.4 4.8 9.4 2.6 13.4h-5.2C11.2 14.4 11.6 9.4 16 5Z' fill='%23fff'/%3E%3Ccircle cx='16' cy='12' r='2' fill='%23E8480F'/%3E%3Cpath d='M14.4 20.4 16 25l1.6-4.6z' fill='%23fff' opacity='.75'/%3E%3C/svg%3E"
+    />
+
     <style>
       /* Фон до завантаження CSS — щоб не блимало чужим кольором */
       html,
@@ -24,6 +36,6 @@
   </head>
   <body>
     <div id="app"></div>
-    <script type="module" src="/app.js"></script>
+    <script type="module" src="./app.js"></script>
   </body>
 </html>
