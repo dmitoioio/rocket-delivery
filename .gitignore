@@ -5,6 +5,7 @@ node_modules/
 
 # Збірка
 dist/
+dist-standalone/
 build/
 .cache/
 *.tsbuildinfo

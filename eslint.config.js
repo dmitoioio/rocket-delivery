@@ -14,6 +14,7 @@ export default [
         indexedDB: 'readonly',
         fetch: 'readonly',
         crypto: 'readonly',
+        TextEncoder: 'readonly',
         CSS: 'readonly',
         URL: 'readonly',
         Image: 'readonly',
