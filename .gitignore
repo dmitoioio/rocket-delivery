@@ -1,0 +1,44 @@
+# Залежності
+node_modules/
+.pnp/
+.pnp.js
+
+# Збірка
+dist/
+build/
+.cache/
+*.tsbuildinfo
+
+# Змінні середовища — ніколи не комітити
+.env
+.env.*
+!.env.example
+
+# Supabase CLI
+.branches/
+.temp/
+supabase/.temp/
+supabase/.branches/
+
+# Netlify
+.netlify/
+
+# Логи
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Редактори / ОС
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# Тимчасові артефакти тестів
+coverage/
+playwright-report/
+test-results/

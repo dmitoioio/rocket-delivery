@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Форматування
+        run: npm run format:check
+
+      - name: Збірка
+        run: npm run build
+
+      - name: Тести
+        run: npm test
+
+      # Захист від найдорожчої помилки: секрет у публічному бандлі.
+      # service_role-ключ Supabase — це повний доступ до бази в обхід RLS.
+      - name: Перевірка, що секрети не потрапили в бандл
+        run: |
+          if grep -rIlE 'service_role|SUPABASE_SERVICE_ROLE|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}' dist/ 2>/dev/null; then
+            echo "::error::У dist/ знайдено те, що схоже на секретний ключ. Див. docs/05-roles-auth-rls.md"
+            exit 1
+          fi
+          echo "OK — секретів у бандлі не знайдено"
+
+      # Демо-креденшели прототипу не мають потрапити в продакшн-збірку (баг B18)
+      - name: Перевірка демо-креденшелів
+        run: |
+          if grep -rIlE 'Skuter2607|RocketBoss26' dist/ 2>/dev/null; then
+            echo "::error::У dist/ знайдено демо-паролі прототипу. Баг B18 у docs/09-audit.md"
+            exit 1
+          fi
+          echo "OK — демо-креденшелів у бандлі не знайдено"

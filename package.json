@@ -1,0 +1,32 @@
+{
+  "name": "rocket-delivery",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Курʼєрський застосунок Rocket Delivery — модуль доставки для платформи cstllife (м. Олика, Волинська обл.)",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "node scripts/build.mjs",
+    "preview": "npx --yes serve dist",
+    "lint": "eslint src scripts test",
+    "format": "prettier --write \"**/*.{js,mjs,json,css,html}\"",
+    "format:check": "prettier --check \"**/*.{js,mjs,json,css,html}\"",
+    "db:diff": "supabase db diff -f",
+    "db:push": "supabase db push",
+    "db:reset": "supabase db reset",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.4.0",
+    "supabase": "^2.0.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.48.0",
+    "leaflet": "^1.9.4"
+  }
+}
