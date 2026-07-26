@@ -23,7 +23,11 @@
 - [04-data-model.md](04-data-model.md) — таблиці й поля
 - [05-roles-auth-rls.md](05-roles-auth-rls.md) — доступ і приватність
 - [07-geolocation.md](07-geolocation.md) — трекінг курʼєра
-- [08-design-system.md](08-design-system.md) — UI-система
+- [12-technical-design.md](12-technical-design.md) — внутрішня будова застосунку: модулі, стан, офлайн, помилки
+
+### Дизайн
+- [08-design-system.md](08-design-system.md) — кольори, шрифти, компоненти
+- [13-ux-design.md](13-ux-design.md) — екрани, стани, взаємодії, приватність в UI
 
 ### Виконання
 - [09-audit.md](09-audit.md) — 🔴 реєстр багів і ризиків
