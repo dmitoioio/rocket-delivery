@@ -1,0 +1,80 @@
+/* Базові стилі й мобільні фікси.
+   ⚠️ Медіа-запити — В КІНЦІ файлу components.css. Це не стиль, це виправлений
+   баг каскаду: десктопний сайдбар адмінки перебивав мобільну розкладку. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  /* 100dvh, не 100vh — виправлений iOS-баг з обертанням екрана
+     і появою адресного рядка */
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  /* Прибирає сіру підсвітку тапу на iOS — вона виглядає як баг */
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  margin: 0;
+  line-height: 1.2;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+  /* Зона натискання ніколи не менша за палець у рукавичці */
+  min-height: var(--tap);
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  min-height: var(--tap);
+}
+
+/* Суми, час, коди — моноширинним, щоб цифри не стрибали
+   при оновленні таймера щосекунди */
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

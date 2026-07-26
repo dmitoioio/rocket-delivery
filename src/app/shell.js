@@ -1,0 +1,219 @@
+/**
+ * Оболонка застосунку: рендер, роутинг, делегування подій.
+ *
+ * Рендер — функція від стану: екран перемальовується цілком, а не
+ * патчиться точково. Для застосунку такого розміру це дешевше й надійніше
+ * за ручну синхронізацію DOM, і не лишає застарілих слухачів.
+ */
+
+import { getState, setState, subscribe, resetState } from '../lib/store.js';
+import * as db from '../lib/db.js';
+import * as offline from '../lib/offline.js';
+import * as geo from '../lib/geo.js';
+import * as login from '../features/auth/login.js';
+import * as courier from '../features/courier/index.js';
+import * as admin from '../features/admin/index.js';
+import { attachSwipe } from '../features/shared/tabs.js';
+import { toast } from '../features/shared/toast.js';
+import { countdown, esc } from '../lib/format.js';
+
+let root = null;
+let lastRoute = null;
+
+/* ── Роутинг ────────────────────────────────────────────────────────────── */
+
+function parseRoute(route) {
+  const [area = '', tab = ''] = String(route || '').split('/');
+  return { area, tab };
+}
+
+function moduleFor(area) {
+  return area === 'admin' ? admin : courier;
+}
+
+/* ── Рендер ─────────────────────────────────────────────────────────────── */
+
+function render() {
+  const state = getState();
+
+  if (!state.session) {
+    root.innerHTML = login.render();
+    login.mount(root);
+    return;
+  }
+
+  const { area, tab } = parseRoute(state.route);
+  const mod = moduleFor(area);
+  const isAdmin = area === 'admin';
+
+  root.innerHTML = `
+    <div class="shell ${isAdmin ? 'shell--admin' : 'shell--phone'}">
+      ${netbar(state)}
+      <header class="shell__head">
+        <h1 class="shell__title">${esc(mod.title(tab))}</h1>
+        ${isAdmin ? '' : `<button class="btn btn--ghost btn--sm" data-action="refresh">↻</button>`}
+      </header>
+      <main class="shell__body" id="screen">${mod.renderTab(state, tab)}</main>
+      ${mod.tabsBar(state, tab)}
+    </div>
+    ${mod.renderOverlay(state)}
+  `;
+
+  const body = root.querySelector('#screen');
+  if (body) attachSwipe(body, (dir) => swipeTab(dir));
+
+  // Фокус на поле PIN одразу — курʼєр стоїть під дверима
+  root.querySelector('#pin-input')?.focus();
+}
+
+/**
+ * Стан звʼязку — постійний елемент, не спливаюче повідомлення.
+ * Показує ще й розмір черги: курʼєр має бачити, що дії не загубились.
+ */
+function netbar(state) {
+  const queued = state.outbox.filter((x) => !x.failed).length;
+  const failed = state.outbox.filter((x) => x.failed).length;
+
+  if (failed) {
+    return `<div class="netbar netbar--offline">
+      ⚠️ ${failed} ${failed === 1 ? 'дія не відправилась' : 'дій не відправились'}
+      <button class="btn btn--ghost btn--sm" data-action="retry-outbox"
+              style="margin-left:auto;color:inherit">Спробувати ще</button>
+    </div>`;
+  }
+  if (state.connection === 'offline') {
+    return `<div class="netbar netbar--offline">📵 Немає звʼязку${
+      queued ? ` · ${queued} в черзі` : ''
+    }</div>`;
+  }
+  if (queued) {
+    return `<div class="netbar">⏳ ${queued} ${queued === 1 ? 'дія' : 'дій'} чекає відправки</div>`;
+  }
+  return '';
+}
+
+function swipeTab(dir) {
+  const { area, tab } = parseRoute(getState().route);
+  const keys = moduleFor(area).tabKeys;
+  const i = keys.indexOf(tab);
+  const next = keys[Math.min(keys.length - 1, Math.max(0, i + dir))];
+  if (next && next !== tab) go(`${area}/${next}`);
+}
+
+export function go(route) {
+  setState({ route, sheet: null });
+}
+
+/* ── Делегування подій ──────────────────────────────────────────────────── */
+
+async function onClick(e) {
+  // Кліки всередині шторки не мають закривати її
+  if (e.target.closest('[data-stop]') && e.target.closest('[data-action]') === null) return;
+
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+
+  const action = el.dataset.action;
+  const state = getState();
+  const { area } = parseRoute(state.route);
+
+  switch (action) {
+    case 'tab':
+      go(`${area}/${el.dataset.tab}`);
+      return;
+    case 'close-sheet':
+      if (el.hasAttribute('data-stop')) return;
+      setState({ sheet: null });
+      return;
+    case 'reload':
+    case 'refresh':
+      await loadCurrent();
+      return;
+    case 'retry-outbox':
+      for (const item of offline.failedItems()) await offline.retry(item.id);
+      await loadCurrent();
+      return;
+    case 'logout':
+      await geo.stop();
+      await db.signOut();
+      resetState();
+      return;
+    default:
+      break;
+  }
+
+  const mod = moduleFor(area);
+  const handled = await mod.handle(action, el);
+  if (!handled) return;
+
+  if (area !== 'admin') await courier.syncTracking();
+}
+
+/* ── Завантаження за роутом ─────────────────────────────────────────────── */
+
+async function loadCurrent() {
+  const { area, tab } = parseRoute(getState().route);
+  if (!getState().session) return;
+  if (area === 'admin') await admin.load();
+  else await courier.load(tab || 'queue');
+}
+
+/* ── Таймери ────────────────────────────────────────────────────────────── */
+
+/**
+ * Countdown оновлюється щосекунди без повного перемальовування —
+ * інакше список стрибав би під пальцем.
+ */
+function tickCountdowns() {
+  for (const el of document.querySelectorAll('[data-countdown]')) {
+    const left = countdown(Number(el.dataset.countdown));
+    if (left) {
+      el.textContent = left;
+    } else {
+      // Час вийшов — перечитати чергу, замовлення могло стати готовим
+      el.textContent = '00:00';
+      scheduleReload();
+    }
+  }
+}
+
+let reloadTimer = null;
+function scheduleReload() {
+  if (reloadTimer) return;
+  reloadTimer = setTimeout(async () => {
+    reloadTimer = null;
+    await loadCurrent();
+  }, 1200);
+}
+
+/* ── Старт ──────────────────────────────────────────────────────────────── */
+
+export function start(mountPoint) {
+  root = mountPoint;
+
+  offline.start();
+
+  subscribe(async (state) => {
+    render();
+    if (state.route !== lastRoute) {
+      lastRoute = state.route;
+      await loadCurrent();
+      await courier.syncTracking();
+    }
+  });
+
+  document.addEventListener('click', onClick);
+  setInterval(tickCountdowns, 1000);
+
+  // Періодичне оновлення черги: Realtime додасться разом із Supabase,
+  // але покладатись лише на нього не можна — після розриву події
+  // не «догортаються», потрібне повне перечитування (docs/12, розділ 5)
+  setInterval(() => {
+    const { area, tab } = parseRoute(getState().route);
+    if (getState().session && (area === 'admin' || tab === 'queue')) loadCurrent();
+  }, 15000);
+
+  window.addEventListener('offline', () => toast('Звʼязок зник — дії підуть у чергу', 'danger'));
+
+  render();
+}
