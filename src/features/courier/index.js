@@ -2,10 +2,11 @@
 
 import * as db from '../../lib/db.js';
 import * as geo from '../../lib/geo.js';
-import * as photo from '../../lib/photo.js';
+import * as photoLib from '../../lib/photo.js';
 import { getState, setState } from '../../lib/store.js';
 import { renderTabs } from '../shared/tabs.js';
 import { toast, haptic } from '../shared/toast.js';
+import { icons } from '../shared/icons.js';
 import * as queueScreen from './queue.js';
 import * as activeScreen from './active.js';
 import * as historyScreen from './history.js';
@@ -13,17 +14,17 @@ import * as profileScreen from './profile.js';
 import * as complete from './complete.js';
 
 const TABS = [
-  { key: 'queue', label: 'Черга', icon: '📋' },
-  { key: 'active', label: 'Активне', icon: '🛵' },
-  { key: 'history', label: 'Історія', icon: '🗂' },
-  { key: 'profile', label: 'Профіль', icon: '👤' },
+  { key: 'queue', label: 'Черга', icon: icons.queue },
+  { key: 'active', label: 'Активне', icon: icons.active },
+  { key: 'history', label: 'Історія', icon: icons.history },
+  { key: 'profile', label: 'Профіль', icon: icons.profile },
 ];
 
 export const tabKeys = TABS.map((t) => t.key);
 
 const TITLES = {
-  queue: 'Черга замовлень',
-  active: 'Активне замовлення',
+  queue: 'Черга',
+  active: 'Активна доставка',
   history: 'Історія',
   profile: 'Профіль',
 };
@@ -32,10 +33,20 @@ export function title(tab) {
   return TITLES[tab] || 'Rocket';
 }
 
+export function subtitle(state, tab) {
+  if (tab === 'queue') {
+    const ready = state.queue.filter((o) => o.status === 'ready').length;
+    return ready ? `${ready} готових до забору` : 'Суші Мар · Олика';
+  }
+  if (tab === 'active') return state.active[0]?.code || '';
+  return '';
+}
+
 export function tabsBar(state, tab) {
+  const readyCount = state.queue.filter((o) => o.status === 'ready').length;
   const withBadge = TABS.map((t) =>
-    t.key === 'queue' && state.queue.some((o) => o.status === 'ready')
-      ? { ...t, badge: state.queue.filter((o) => o.status === 'ready').length }
+    t.key === 'queue' && readyCount
+      ? { ...t, badge: readyCount }
       : t.key === 'active' && state.active.length
         ? { ...t, badge: state.active.length }
         : t
@@ -56,15 +67,12 @@ export function renderTab(state, tab) {
   }
 }
 
-/** Шторки поверх контенту. */
 export function renderOverlay(state) {
-  if (state.complete) {
-    return state.complete.result
-      ? complete.successSheet(state.complete.result)
-      : complete.sheet(state);
-  }
+  if (state.complete) return complete.sheet(state);
   if (state.sheet?.type === 'cancel') return activeScreen.cancelSheet(state.sheet.orderId);
-  if (state.sheet?.type === 'handoff') return profileScreen.handoffSheet(state.courier);
+  if (state.sheet?.type === 'handoff') {
+    return profileScreen.handoffSheet(state.courier, state.sheet.orders || []);
+  }
   if (state.sheet?.type === 'geo-gate') return profileScreen.geoGateSheet();
   if (state.sheet?.type === 'geo-denied') return profileScreen.geoDeniedSheet();
   return '';
@@ -91,7 +99,8 @@ export async function load(tab) {
       setState({ active, status: 'ready' });
       await loadContact(active[0], cid);
     } else if (tab === 'history') {
-      setState({ history: await db.fetchHistory(cid), status: 'ready' });
+      const [history, courier] = await Promise.all([db.fetchHistory(cid), db.fetchCourier(cid)]);
+      setState({ history, courier, status: 'ready' });
     } else if (tab === 'profile') {
       setState({ courier: await db.fetchCourier(cid), status: 'ready' });
     }
@@ -100,7 +109,7 @@ export async function load(tab) {
   }
 }
 
-/** Контакт клієнта — окремим RPC, і тільки поки замовлення активне (B15). */
+/** Контакт клієнта — окремим RPC і тільки поки замовлення активне (B15). */
 async function loadContact(order, courierId) {
   if (!order) return setState({ contact: null });
   try {
@@ -113,11 +122,6 @@ async function loadContact(order, courierId) {
 
 /* ── Дії ────────────────────────────────────────────────────────────────── */
 
-/**
- * @param {string} action
- * @param {HTMLElement} el
- * @returns {Promise<boolean>} чи оброблено
- */
 export async function handle(action, el) {
   const state = getState();
   const cid = state.session?.courierId;
@@ -139,28 +143,24 @@ export async function handle(action, el) {
       await cancel(el.dataset.id, el.dataset.reason, cid);
       return true;
 
+    /* — завершення доставки — */
     case 'take-photo':
       await takePhoto();
       return true;
 
-    case 'photo-next':
-      setState({ complete: { ...state.complete, step: 'pin' } });
-      return true;
-
-    case 'pin-next':
-      await submitPin(false);
-      return true;
-
     case 'pin-bypass':
-      await submitPin(true);
+      patchFlow({ pinBypassed: true, pin: '', pinError: null });
       return true;
 
-    case 'cash-ok':
-      await finish(cid);
+    case 'pin-restore':
+      patchFlow({ pinBypassed: false });
       return true;
 
-    case 'cash-problem':
-      toast('Звернись до адміністратора — розбіжність зафіксовано', 'danger', 3600);
+    case 'cash-taken':
+      patchFlow({ cashTaken: !state.complete?.cashTaken });
+      return true;
+
+    case 'finish-delivery':
       await finish(cid);
       return true;
 
@@ -169,6 +169,7 @@ export async function handle(action, el) {
       await load('active');
       return true;
 
+    /* — профіль — */
     case 'toggle-online':
       await toggleOnline(cid);
       return true;
@@ -178,7 +179,7 @@ export async function handle(action, el) {
       return true;
 
     case 'open-handoff':
-      setState({ sheet: { type: 'handoff' } });
+      await openHandoff(cid);
       return true;
 
     case 'declare-handoff':
@@ -190,18 +191,26 @@ export async function handle(action, el) {
   }
 }
 
+/** Зберігає введений PIN перед перемальовуванням — інакше він губиться. */
+function patchFlow(patch) {
+  const flow = getState().complete;
+  if (!flow) return;
+  const typed = document.getElementById('pin-input')?.value;
+  setState({ complete: { ...flow, ...(typed !== undefined ? { pin: typed } : {}), ...patch } });
+}
+
 /**
  * Взяття замовлення.
  *
- * UX програшу важливіший за UX виграшу — програвати курʼєр буде частіше
- * (ADR-0009). Картка згасає, тост пояснює, курʼєр ЛИШАЄТЬСЯ в черзі.
+ * UX програшу важливіший за UX виграшу — програвати кур'єр буде частіше
+ * (ADR-0009). Картка згасає, тост пояснює, кур'єр ЛИШАЄТЬСЯ в черзі.
  * Ніякої модалки: поки він її закриває, програє й наступну гонку.
  */
 async function accept(orderId, courierId, el) {
   if (!orderId || !courierId) return;
 
   el.disabled = true;
-  el.textContent = 'Беру...';
+  el.textContent = 'Беру…';
 
   try {
     await db.acceptOrder(orderId, courierId);
@@ -210,28 +219,32 @@ async function accept(orderId, courierId, el) {
     await load('active');
     setState({ route: 'courier/active' });
   } catch (error) {
+    haptic('error');
     if (error.kind === 'conflict') {
-      haptic('error');
-      fadeOutCard(orderId);
+      document.querySelector(`[data-card="${CSS.escape(orderId)}"]`)?.classList.add('card--taken');
       toast('Встиг інший', 'info', 1800);
       setState({ queue: getState().queue.filter((o) => o.id !== orderId) });
     } else {
-      haptic('error');
       toast(error.message, 'danger', 3200);
       el.disabled = false;
-      el.textContent = 'ВЗЯТИ';
+      el.textContent = 'Взяти замовлення';
     }
   }
 }
 
-function fadeOutCard(orderId) {
-  document.querySelector(`[data-card="${CSS.escape(orderId)}"]`)?.classList.add('card--taken');
-}
-
 async function advance(orderId, toStatus, courierId) {
   if (toStatus === 'delivered') {
-    // Завершення доставки — окремий флоу з фото й PIN
-    setState({ complete: { orderId, step: 'photo', photo: null, pin: '', result: null } });
+    setState({
+      complete: {
+        orderId,
+        photo: null,
+        pin: '',
+        pinBypassed: false,
+        cashTaken: false,
+        pinError: null,
+        result: null,
+      },
+    });
     return;
   }
 
@@ -251,7 +264,8 @@ async function cancel(orderId, reasonCode, courierId) {
   try {
     const res = await db.cancelOrder(orderId, courierId, { reasonCode, note: '' });
     if (res.queued) toast('Немає звʼязку — надішлеться автоматично', 'info', 3000);
-    else toast(reasonCode === 'return_to_queue' ? 'Повернуто в чергу' : 'Замовлення скасовано');
+    else if (reasonCode === 'return_to_queue') toast('Повернуто в чергу');
+    else toast('Адмін уже бачить це в дашборді', 'info', 3400);
     setState({ contact: null });
     await load('active');
   } catch (error) {
@@ -260,40 +274,15 @@ async function cancel(orderId, reasonCode, courierId) {
 }
 
 async function takePhoto() {
-  const file = await photo.capture();
+  const file = await photoLib.capture();
   if (!file) return;
   try {
-    const compressed = await photo.compress(file);
-    const uploaded = await photo.upload(getState().complete.orderId, compressed.dataUrl);
-    setState({
-      complete: {
-        ...getState().complete,
-        photo: { ...uploaded, bytes: compressed.bytes },
-      },
-    });
+    const compressed = await photoLib.compress(file);
+    const uploaded = await photoLib.upload(getState().complete.orderId, compressed.dataUrl);
+    patchFlow({ photo: { ...uploaded, bytes: compressed.bytes } });
+    haptic('ok');
   } catch {
     toast('Не вдалось обробити фото', 'danger');
-  }
-}
-
-async function submitPin(bypassed) {
-  const state = getState();
-  const input = document.getElementById('pin-input');
-  const pin = bypassed ? '' : (input?.value || '').trim();
-
-  if (!bypassed && pin.length !== 4) {
-    setState({ complete: { ...state.complete, pin, pinError: 'Потрібно 4 цифри' } });
-    return;
-  }
-
-  const order = state.active.find((o) => o.id === state.complete.orderId);
-  const next = { ...state.complete, pin, pinBypassed: bypassed, pinError: null };
-
-  if (order?.paymentMethod === 'cash') {
-    setState({ complete: { ...next, step: 'cash' } });
-  } else {
-    setState({ complete: next });
-    await finish(state.session.courierId);
   }
 }
 
@@ -302,14 +291,18 @@ async function finish(courierId) {
   const flow = state.complete;
   if (!flow) return;
 
+  const order = state.active.find((o) => o.id === flow.orderId);
+  const pin = flow.pinBypassed ? '' : document.getElementById('pin-input')?.value || flow.pin;
+
+  const check = complete.readiness({ ...flow, pin }, order);
+  if (!check.ok) return toast(check.missing, 'danger');
+
   try {
     const res = await db.completeDelivery(flow.orderId, courierId, {
       photoPath: flow.photo?.path,
-      pin: flow.pin,
+      pin,
       pinBypassed: !!flow.pinBypassed,
     });
-
-    haptic('ok');
 
     if (res.queued) {
       // Ніколи не показуємо успіх для непідтвердженого сервером (B23)
@@ -319,22 +312,22 @@ async function finish(courierId) {
       return;
     }
 
+    haptic('ok');
     const courier = await db.fetchCourier(courierId);
     setState({
       courier,
       complete: {
         ...flow,
         result: {
-          earned: db.config.courierPerDelivery,
+          earned: db.config.courierPerDelivery + (order?.waitingBonus || 0),
           cashOnHand: courier.cashOnHand,
         },
       },
     });
   } catch (error) {
     haptic('error');
-    // Невірний PIN повертає на крок PIN, а не закриває весь флоу
     if (error.kind === 'validation' && /код/i.test(error.message)) {
-      setState({ complete: { ...flow, step: 'pin', pinError: error.message } });
+      setState({ complete: { ...flow, pin, pinError: error.message } });
       return;
     }
     setState({ complete: null });
@@ -345,7 +338,7 @@ async function finish(courierId) {
 /* ── Онлайн і геолокація ────────────────────────────────────────────────── */
 
 /**
- * Без дозволу на геолокацію курʼєр не може вийти в онлайн (B22):
+ * Без дозволу на геолокацію кур'єр не може вийти на лінію (B22):
  * замовлення без трекінгу — це замовлення, за яким ніхто не бачить, де їжа.
  */
 async function toggleOnline(courierId) {
@@ -368,10 +361,7 @@ async function toggleOnline(courierId) {
 
 async function grantGeo(courierId) {
   const granted = await geo.requestPermission();
-  if (!granted) {
-    setState({ sheet: { type: 'geo-denied' } });
-    return;
-  }
+  if (!granted) return setState({ sheet: { type: 'geo-denied' } });
   setState({ sheet: null });
   await goOnline(courierId);
 }
@@ -380,7 +370,7 @@ async function goOnline(courierId) {
   setState({ sheet: null });
   await db.setCourierStatus(courierId, 'online');
   await load('profile');
-  toast('Ти онлайн', 'ok');
+  toast('Ти на лінії', 'ok');
 }
 
 /** Трекінг тільки під час активного замовлення. */
@@ -397,16 +387,28 @@ export async function syncTracking() {
   }
 }
 
+/* ── Готівка ────────────────────────────────────────────────────────────── */
+
+async function openHandoff(courierId) {
+  let orders = [];
+  try {
+    const history = await db.fetchHistory(courierId);
+    orders = history.filter((o) => o.status === 'delivered' && o.paymentMethod === 'cash');
+  } catch {
+    /* перелік необовʼязковий — сума на руках уже відома */
+  }
+  setState({ sheet: { type: 'handoff', orders } });
+}
+
 async function declareHandoff(courierId) {
-  const input = document.getElementById('handoff-amount');
-  const amount = Number(input?.value);
+  const amount = Number(document.getElementById('handoff-amount')?.value);
   if (!amount || amount <= 0) return toast('Вкажи суму', 'danger');
 
   setState({ sheet: null });
   try {
     const res = await db.declareCashHandoff(courierId, amount);
     if (res.queued) toast('Немає звʼязку — надішлеться автоматично', 'info', 3000);
-    else toast('Заявку відправлено. Чекай підтвердження закладу', 'ok', 3200);
+    else toast('Заявку відправлено. Чекай підтвердження закладу', 'ok', 3400);
     await load('profile');
   } catch (error) {
     toast(error.message, 'danger');

@@ -7,8 +7,8 @@ import { esc } from '../../lib/format.js';
 
 export function render() {
   return `<div class="login">
-    <h1 class="login__logo">🚀 Rocket</h1>
-    <p class="login__sub">Курʼєрський застосунок cstllife</p>
+    <h1 class="login__logo">Rocket Delivery</h1>
+    <p class="login__sub">Доставка CSTL LIFE · Олика</p>
 
     <form id="login-form" novalidate>
       <div class="field">
@@ -22,7 +22,7 @@ export function render() {
                autocomplete="current-password" required>
       </div>
       <div id="login-error"></div>
-      <button class="btn btn--primary" type="submit" id="login-submit">УВІЙТИ</button>
+      <button class="btn btn-rocket" type="submit" id="login-submit">Увійти</button>
     </form>
 
     ${devHint()}
@@ -40,14 +40,16 @@ function devHint() {
   const rows = db.demoCredentials
     .map(
       (c) =>
-        `${esc(c.role)}: <code class="mono">${esc(c.login)}</code> /
-         <code class="mono">${esc(c.password)}</code>`
+        `<div class="row" style="margin-top:6px">
+           <span class="mut">${esc(c.role)}</span>
+           <span class="num tiny">${esc(c.login)} / ${esc(c.password)}</span>
+         </div>`
     )
-    .join('<br>');
+    .join('');
 
-  return `<div class="notice" style="margin-top:24px">
-    <strong>Демо-режим</strong><br>
-    Дані живуть у памʼяті браузера й скидаються при перезавантаженні.<br><br>
+  return `<div class="callout callout--info" style="margin-top:24px">
+    <strong>Демо-режим.</strong> Дані живуть у памʼяті браузера й скидаються
+    при перезавантаженні.
     ${rows}
   </div>`;
 }
@@ -64,12 +66,12 @@ export function mount(root) {
     const password = form.password.value;
 
     if (!login || !password) {
-      errorBox.innerHTML = `<div class="notice notice--danger">Заповни обидва поля</div>`;
+      errorBox.innerHTML = `<div class="callout callout--warn">Заповни обидва поля</div>`;
       return;
     }
 
     btn.disabled = true;
-    btn.textContent = 'Вхід...';
+    btn.textContent = 'Вхід…';
     errorBox.innerHTML = '';
 
     try {
@@ -78,9 +80,9 @@ export function mount(root) {
       setState({ session, route: session.role === 'admin' ? 'admin/dashboard' : 'courier/queue' });
     } catch (error) {
       haptic('error');
-      errorBox.innerHTML = `<div class="notice notice--danger">${esc(error.message)}</div>`;
+      errorBox.innerHTML = `<div class="callout callout--warn">${esc(error.message)}</div>`;
       btn.disabled = false;
-      btn.textContent = 'УВІЙТИ';
+      btn.textContent = 'Увійти';
       toast(error.message, 'danger');
     }
   });

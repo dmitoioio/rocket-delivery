@@ -1,7 +1,7 @@
 /**
  * Вкладки зі свайпом.
  *
- * Два правила з docs/13-ux-design.md:
+ * Два правила:
  *  • жодна функція не доступна ЛИШЕ свайпом — завжди є тап по вкладці;
  *  • свайп ігнорується всередині карти, інакше перетягування Leaflet
  *    сприймається як перехід між вкладками (B27).
@@ -13,24 +13,22 @@ const SWIPE_MIN_X = 60;
 const SWIPE_MAX_Y = 45;
 
 /**
- * @param {{key: string, label: string, icon: string, badge?: number}[]} tabs
+ * @param {{key: string, label: string, icon: (s?: number) => string, badge?: number}[]} tabs
  * @param {string} activeKey
  */
 export function renderTabs(tabs, activeKey) {
-  return `<nav class="tabs" role="tablist">${tabs
+  return `<nav class="tabbar" role="tablist">${tabs
     .map((t) => {
-      const badge = t.badge ? `<span class="tab__badge">${esc(t.badge)}</span>` : '';
+      const badge = t.badge ? `<span class="tab__badge num">${esc(t.badge)}</span>` : '';
       return `<button class="tab" role="tab" aria-selected="${t.key === activeKey}"
                 data-action="tab" data-tab="${esc(t.key)}">
-        <span class="tab__icon" aria-hidden="true">${esc(t.icon)}</span>${badge}
-        <span>${esc(t.label)}</span>
+        ${badge}${t.icon(21)}<span>${esc(t.label)}</span>
       </button>`;
     })
     .join('')}</nav>`;
 }
 
 /**
- * Підключити свайп до контейнера.
  * @param {HTMLElement} el
  * @param {(dir: 1|-1) => void} onSwipe
  */

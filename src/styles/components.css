@@ -6,62 +6,106 @@
   min-height: 100dvh;
 }
 
-/* Курʼєрські екрани — у рамці телефона на десктопі */
 .shell {
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
+  background: var(--surface-2);
+}
+
+.shell--admin {
   background: var(--bg);
-  position: relative;
 }
 
 .shell__body {
   flex: 1;
   overflow-y: auto;
-  padding: var(--sp-4);
-  padding-bottom: calc(var(--sp-6) + env(safe-area-inset-bottom));
+  padding: 6px var(--sp-4) var(--sp-4);
+  scrollbar-width: none;
 }
 
-.shell__head {
+.shell__body::-webkit-scrollbar {
+  display: none;
+}
+
+/* Верхній бар усередині телефона */
+.nav {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--sp-3);
-  padding: calc(var(--sp-3) + env(safe-area-inset-top)) var(--sp-4) var(--sp-3);
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-sunken);
+  padding: calc(6px + env(safe-area-inset-top)) var(--sp-4) var(--sp-4);
+  background: var(--surface-2);
 }
 
-.shell__title {
-  font-size: 18px;
-  letter-spacing: -0.01em;
+.shell--admin .nav {
+  background: var(--bg);
 }
 
-/* ── Смуга звʼязку — постійний елемент, не спливаюче повідомлення ───────── */
+.nav__title {
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  flex: 1;
+}
+
+.nav__title small {
+  display: block;
+  font-size: 12px;
+  font-weight: 450;
+  color: var(--ink-3);
+  letter-spacing: 0;
+}
+
+.nav__btn {
+  width: var(--tap-min);
+  height: var(--tap-min);
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Смуга звʼязку ──────────────────────────────────────────────────────── */
+/* Постійний елемент, не спливаюче повідомлення */
 
 .netbar {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-4);
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
-  background: var(--warn);
-  color: #1a1200;
+  background: var(--s-cook-soft);
+  color: var(--s-cook);
 }
 
 .netbar--offline {
-  background: var(--fire);
-  color: #fff;
+  background: var(--s-bad-soft);
+  color: var(--s-bad);
 }
 
-/* ── Вкладки ────────────────────────────────────────────────────────────── */
+.netbar button {
+  margin-left: auto;
+  color: inherit;
+  font-weight: 650;
+  font-size: 13.5px;
+  text-decoration: underline;
+  min-height: 0;
+}
 
-.tabs {
+/* ── Таб-бар ────────────────────────────────────────────────────────────── */
+
+.tabbar {
+  flex: 0 0 auto;
   display: flex;
-  border-top: 1px solid var(--border);
-  background: var(--bg-sunken);
-  padding-bottom: env(safe-area-inset-bottom);
+  border-top: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  padding: var(--sp-2) var(--sp-1) calc(var(--sp-2) + env(safe-area-inset-bottom));
 }
 
 .tab {
@@ -70,376 +114,636 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  padding: var(--sp-2) 2px;
-  font-size: 11px;
-  color: var(--text-faint);
-  border-top: 2px solid transparent;
-  transition: color var(--t-fast);
-}
-
-.tab__icon {
-  font-size: 20px;
-  line-height: 1;
+  gap: 3px;
+  padding: 6px 2px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+  position: relative;
+  min-height: 52px;
 }
 
 .tab[aria-selected='true'] {
-  color: var(--electric);
-  border-top-color: var(--electric);
+  color: var(--tab-on, var(--rocket));
 }
 
 .tab__badge {
   position: absolute;
-  transform: translate(14px, -22px);
-  min-width: 18px;
-  height: 18px;
+  top: 2px;
+  left: 50%;
+  transform: translateX(6px);
+  min-width: 17px;
+  height: 17px;
   padding: 0 5px;
   border-radius: 9px;
-  background: var(--fire);
+  background: var(--rocket-bg);
   color: #fff;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 700;
-  line-height: 18px;
+  line-height: 17px;
+  text-align: center;
 }
 
 /* ── Картки ─────────────────────────────────────────────────────────────── */
 
 .card {
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: var(--sp-4);
-  margin-bottom: var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 15px;
   transition:
     opacity var(--t-base),
     transform var(--t-base);
 }
 
+.card + .card {
+  margin-top: 10px;
+}
+
+/* Свіже готове замовлення підсвічене рамкою бренду */
+.card--hot {
+  border-color: var(--rocket-bg);
+}
+
 .card--taken {
   opacity: 0;
-  transform: scale(0.96);
+  transform: scale(0.97);
   pointer-events: none;
 }
 
-.card--disabled {
+.card--muted {
   opacity: 0.55;
 }
 
-.card__top {
+.card--accent {
+  background: var(--s-cook-soft);
+  border-color: transparent;
+}
+
+.row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-3);
-  margin-bottom: var(--sp-2);
 }
 
-.card__code {
-  font-family: var(--font-display);
-  font-size: 18px;
+.row + .row {
+  margin-top: 9px;
+}
+
+/* ── Типографічна шкала ─────────────────────────────────────────────────── */
+/* Ієрархію тримає розмір і вага, не колір */
+
+.big {
+  font-size: 27px;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
 }
 
-.card__biz {
-  color: var(--text-muted);
-  font-size: 14px;
-  margin-bottom: var(--sp-3);
+.huge {
+  font-size: 38px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
 }
 
-.card__row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--sp-3);
-  margin-bottom: var(--sp-3);
+.mid {
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
 }
 
-.card__dest {
+.lbl {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.mut {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.tiny {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  line-height: 1.45;
+}
+
+.h-sec {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 20px 0 10px;
+}
+
+.h-sec:first-child {
+  margin-top: 4px;
+}
+
+.strong {
   font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
 }
 
-.card__dist {
-  color: var(--text-muted);
-  font-size: 14px;
-  white-space: nowrap;
+.accent {
+  color: var(--rocket);
 }
 
-.card__total {
-  font-size: 22px;
-  font-weight: 700;
-}
+/* ── Статусні пігулки ───────────────────────────────────────────────────── */
+/* Шість кольорів, спільні для всіх поверхонь.
+   Стан не кодується тільки кольором — є крапка й текст. */
 
-/* Надбавка за очікування — має бути помітною, інакше не працює (B35) */
-.bonus {
-  color: var(--warn);
-  font-weight: 700;
-  font-size: 15px;
-  white-space: nowrap;
-}
-
-/* ── Значки статусів ────────────────────────────────────────────────────── */
-
-.chip {
+.st {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 650;
+  padding: 5px 11px;
+  border-radius: 100px;
   white-space: nowrap;
-  background: var(--bg-sunken);
-  border: 1px solid var(--border-strong);
+  letter-spacing: -0.01em;
 }
 
-/* Стани не кодуються ТІЛЬКИ кольором — кожен має крапку-іконку й текст */
-.chip__dot {
-  width: 8px;
-  height: 8px;
+.st::before {
+  content: '';
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: currentColor;
+  flex: 0 0 auto;
 }
 
-.chip--preparing {
-  color: var(--st-preparing);
+.st-new {
+  color: var(--s-new);
+  background: var(--s-new-soft);
 }
-.chip--ready {
-  color: var(--st-ready);
+.st-cook {
+  color: var(--s-cook);
+  background: var(--s-cook-soft);
 }
-.chip--active {
-  color: var(--st-active);
+.st-ready {
+  color: var(--s-ready);
+  background: var(--s-ready-soft);
 }
-.chip--done {
-  color: var(--st-done);
+.st-go {
+  color: var(--s-go);
+  background: var(--s-go-soft);
 }
-.chip--cancelled {
-  color: var(--st-cancelled);
+.st-done {
+  color: var(--s-done);
+  background: var(--s-done-soft);
 }
-.chip--cash {
-  color: var(--fire);
-  border-color: var(--fire-dim);
+.st-bad {
+  color: var(--s-bad);
+  background: var(--s-bad-soft);
 }
-.chip--online {
-  color: var(--electric);
-  border-color: var(--electric-dim);
+.st-dim {
+  color: var(--ink-3);
+  background: var(--surface-3);
 }
 
 /* ── Кнопки ─────────────────────────────────────────────────────────────── */
+/* Рівно одна головна кнопка на екран, на всю ширину, 54px */
 
 .btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-2);
+  gap: 9px;
   width: 100%;
-  min-height: 52px;
-  padding: var(--sp-3) var(--sp-4);
-  border-radius: var(--r-md);
-  font-weight: 700;
+  min-height: var(--tap);
+  border-radius: var(--r-btn);
   font-size: 16px;
-  letter-spacing: 0.01em;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   transition:
     transform var(--t-fast),
     opacity var(--t-fast);
 }
 
 .btn:active:not(:disabled) {
-  transform: scale(0.98);
+  transform: scale(0.985);
 }
 
 .btn:disabled {
-  opacity: 0.45;
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
-.btn--primary {
-  background: var(--fire);
+.btn + .btn {
+  margin-top: 9px;
+}
+
+.btn-rocket {
+  background: var(--rocket-bg);
   color: #fff;
 }
 
-.btn--secondary {
-  background: var(--bg-sunken);
-  color: var(--text);
-  border: 1px solid var(--border-strong);
+.btn-cstl {
+  background: var(--cstl);
+  color: #fff;
 }
 
-.btn--ghost {
-  background: none;
-  color: var(--text-muted);
-  min-height: var(--tap);
-  font-weight: 600;
-  font-size: 15px;
+.btn-dark {
+  background: var(--ink);
+  color: #fff;
 }
 
-.btn--danger {
-  background: none;
-  color: var(--fire);
-  border: 1px solid var(--fire-dim);
+.btn-ok {
+  background: var(--s-done);
+  color: #fff;
 }
 
-.btn--sm {
-  min-height: var(--tap);
+.btn-ghost {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line-2);
+}
+
+.btn-danger {
+  background: transparent;
+  color: var(--s-bad);
+  border: 1px solid rgba(211, 47, 42, 0.3);
+}
+
+.btn-sm {
+  min-height: var(--tap-min);
   font-size: 14px;
+  border-radius: 12px;
   width: auto;
-  padding: var(--sp-2) var(--sp-4);
+  padding: 0 17px;
 }
 
-/* ── Степер із пунктирною трасою ────────────────────────────────────────── */
-
-.stepper {
-  display: flex;
-  align-items: flex-start;
-  padding: var(--sp-4) 0;
-}
-
-.step {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--sp-2);
-  position: relative;
-  font-size: 11px;
-  color: var(--text-faint);
-  text-align: center;
-}
-
-.step__dot {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--bg-sunken);
-  border: 2px solid var(--border-strong);
-  z-index: 1;
-}
-
-.step--done .step__dot {
-  background: var(--fire);
-  border-color: var(--fire);
-}
-
-.step--current .step__dot {
-  background: var(--fire);
-  border-color: var(--fire);
-  box-shadow: 0 0 0 5px rgba(255, 90, 60, 0.22);
-}
-
-.step--done,
-.step--current {
-  color: var(--text);
+/* Другорядне — тьмяне й дрібніше */
+.btn-quiet {
+  background: none;
+  color: var(--ink-2);
+  min-height: var(--tap-min);
+  font-size: 14.5px;
   font-weight: 600;
 }
 
-/* Траса: пройдене суцільне, майбутнє пунктирне */
-.step:not(:first-child)::before {
-  content: '';
-  position: absolute;
-  top: 6px;
-  right: 50%;
-  left: -50%;
-  height: 2px;
-  border-top: 2px dashed var(--border-strong);
-}
+/* ── Горизонтальний степер ──────────────────────────────────────────────── */
+/* Смуги, не крапки: на вузькому екрані читається краще й не ламається
+   на довгих підписах */
 
-.step--done::before,
-.step--current::before {
-  border-top: 2px solid var(--fire);
-}
-
-/* ── Секції та рядки ────────────────────────────────────────────────────── */
-
-.section {
-  margin-bottom: var(--sp-5);
-}
-
-.section__title {
-  font-size: 13px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-faint);
+.hstep {
+  display: flex;
+  gap: 5px;
   margin-bottom: var(--sp-3);
 }
 
-.line {
+.hstep div {
+  flex: 1;
+  height: 5px;
+  border-radius: 100px;
+  background: var(--surface-3);
+}
+
+.hstep div.on {
+  background: var(--rocket-bg);
+}
+
+.hstep-lbl {
   display: flex;
-  align-items: baseline;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--ink-3);
+  font-weight: 600;
+  margin-bottom: 18px;
+  letter-spacing: -0.01em;
+}
+
+.hstep-lbl span.on {
+  color: var(--rocket);
+}
+
+/* ── Орієнтир ───────────────────────────────────────────────────────────── */
+/* У селі орієнтир важливіший за номер будинку — тому виділений блок,
+   а не дрібний підпис під адресою */
+
+.landmark {
+  margin-top: 7px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: var(--s-cook-soft);
+  color: var(--s-cook);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.addr-line {
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  margin-top: 3px;
+}
+
+/* ── Карта ──────────────────────────────────────────────────────────────── */
+/* Свайп між вкладками ігнорується всередині цього контейнера */
+
+.map {
+  height: 150px;
+  border-radius: var(--r-sm);
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.55)),
+    repeating-linear-gradient(0deg, #dde3ea 0 1px, transparent 1px 26px),
+    repeating-linear-gradient(90deg, #dde3ea 0 1px, transparent 1px 26px), #edf1f5;
+}
+
+.map--lg {
+  height: 300px;
+}
+
+.map__route {
+  position: absolute;
+  left: 16%;
+  top: 70%;
+  width: 64%;
+  height: 2px;
+  background: var(--s-go);
+  transform: rotate(-27deg);
+  transform-origin: left center;
+  border-radius: 2px;
+  opacity: 0.75;
+}
+
+.pin {
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.pin--from {
+  background: var(--rocket-bg);
+  left: 14%;
+  top: 68%;
+}
+
+.pin--to {
+  background: var(--s-done);
+  left: 76%;
+  top: 22%;
+}
+
+.map__badge {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  background: rgba(255, 255, 255, 0.94);
+  border-radius: 100px;
+  padding: 6px 13px;
+  font-size: 12.5px;
+  font-weight: 650;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+/* ── Фото-підтвердження ─────────────────────────────────────────────────── */
+
+.photo {
+  border: 1.5px dashed var(--line-2);
+  border-radius: var(--r-sm);
+  padding: 22px 16px;
+  text-align: center;
+  background: var(--surface);
+}
+
+.photo--done {
+  border-style: solid;
+  border-color: var(--s-done);
+  background: var(--s-done-soft);
+}
+
+.photo__icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--rocket-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 11px;
+}
+
+.photo__preview {
+  width: 100%;
+  border-radius: var(--r-sm);
+  display: block;
+  margin-bottom: var(--sp-3);
+}
+
+/* ── Сегментований перемикач ────────────────────────────────────────────── */
+
+.seg {
+  display: flex;
+  background: var(--surface-3);
+  border-radius: 11px;
+  padding: 3px;
+  gap: 3px;
+}
+
+.seg button {
+  flex: 1;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 4px;
+  border-radius: 9px;
+  color: var(--ink-2);
+  min-height: 38px;
+}
+
+.seg button[aria-selected='true'] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.09);
+}
+
+/* ── Перемикач on/off ───────────────────────────────────────────────────── */
+
+.sw {
+  width: 50px;
+  height: 30px;
+  min-height: 30px;
+  border-radius: 100px;
+  background: var(--surface-3);
+  position: relative;
+  flex: 0 0 auto;
+  transition: background var(--t-base);
+}
+
+.sw::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: left var(--t-base);
+}
+
+.sw[aria-checked='true'] {
+  background: var(--s-done);
+}
+
+.sw[aria-checked='true']::after {
+  left: 23px;
+}
+
+/* ── Аватар ─────────────────────────────────────────────────────────────── */
+
+.av {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--ink);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.av--sm {
+  width: 28px;
+  height: 28px;
+  font-size: 11px;
+}
+
+/* Кнопка дзвінка — зелений круг, одним тапом */
+.call {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--s-done);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+/* ── Трійка показників ──────────────────────────────────────────────────── */
+
+.trio {
+  display: flex;
+  text-align: center;
+}
+
+.trio > div {
+  flex: 1;
+}
+
+.trio > div + div {
+  border-left: 1px solid var(--line);
+}
+
+/* ── Список причин ──────────────────────────────────────────────────────── */
+
+.reason {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: var(--sp-3);
-  padding: var(--sp-2) 0;
-}
-
-.line__label {
-  color: var(--text-muted);
-  font-size: 14px;
-}
-
-.addr {
-  display: flex;
-  gap: var(--sp-2);
-  margin-bottom: var(--sp-2);
-  font-size: 16px;
-}
-
-/* Орієнтир нарівні з адресою, не дрібним шрифтом під нею:
-   у селах без нумерації він і Є адресою */
-.addr--landmark {
-  color: var(--warn);
+  width: 100%;
+  padding: 15px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: 15px;
   font-weight: 600;
+  text-align: left;
+  min-height: var(--tap);
+}
+
+.reason + .reason {
+  margin-top: 10px;
 }
 
 /* ── Прогрес ────────────────────────────────────────────────────────────── */
 
 .bar {
-  height: 8px;
-  border-radius: 4px;
-  background: var(--bg-sunken);
+  height: 6px;
+  border-radius: 100px;
+  background: var(--surface-3);
   overflow: hidden;
-  border: 1px solid var(--border);
 }
 
 .bar__fill {
   height: 100%;
-  background: var(--electric);
+  border-radius: 100px;
+  background: var(--s-done);
   transition: width var(--t-base);
 }
 
 .bar__fill--warn {
-  background: var(--warn);
-}
-.bar__fill--danger {
-  background: var(--fire);
+  background: var(--s-cook);
 }
 
-/* ── Порожні стани й помилки ────────────────────────────────────────────── */
+.bar__fill--danger {
+  background: var(--s-bad);
+}
+
+/* ── Порожні стани, помилки, скелетони ──────────────────────────────────── */
 
 .empty {
   text-align: center;
   padding: var(--sp-6) var(--sp-4);
-  color: var(--text-muted);
+  color: var(--ink-2);
 }
 
 .empty__icon {
-  font-size: 44px;
-  margin-bottom: var(--sp-3);
-  opacity: 0.6;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto var(--sp-3);
+  font-size: 24px;
 }
 
 .empty__title {
-  font-family: var(--font-display);
-  font-size: 17px;
-  color: var(--text);
-  margin-bottom: var(--sp-2);
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+
+.empty p {
+  font-size: 13.5px;
 }
 
 /* Скелетон у формі майбутнього контенту, не спінер по центру */
 .skeleton {
-  background: linear-gradient(90deg, var(--bg-raised), var(--border), var(--bg-raised));
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-3) 50%, var(--surface) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s infinite;
-  border-radius: var(--r-lg);
-  height: 148px;
-  margin-bottom: var(--sp-3);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  height: 152px;
+}
+
+.skeleton + .skeleton {
+  margin-top: 10px;
 }
 
 @keyframes shimmer {
@@ -448,12 +752,39 @@
   }
 }
 
+/* ── Виноска ────────────────────────────────────────────────────────────── */
+
+.callout {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--cstl);
+  border-radius: var(--r-sm);
+  padding: 14px 16px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+
+.callout--warn {
+  border-left-color: var(--s-bad);
+}
+.callout--ok {
+  border-left-color: var(--s-done);
+}
+.callout--info {
+  border-left-color: var(--s-new);
+}
+.callout strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+
 /* ── Тост ───────────────────────────────────────────────────────────────── */
 
 .toast-host {
   position: fixed;
   left: 50%;
-  bottom: calc(84px + env(safe-area-inset-bottom));
+  bottom: calc(86px + env(safe-area-inset-bottom));
   transform: translateX(-50%);
   z-index: 60;
   display: flex;
@@ -464,23 +795,21 @@
 }
 
 .toast {
-  padding: var(--sp-3) var(--sp-4);
-  border-radius: var(--r-md);
-  background: var(--bg-raised);
-  border: 1px solid var(--border-strong);
-  box-shadow: var(--shadow);
-  font-size: 15px;
+  padding: 13px 16px;
+  border-radius: var(--r-sm);
+  background: var(--ink);
+  color: #fff;
+  box-shadow: var(--shadow-lg);
+  font-size: 14.5px;
   font-weight: 600;
   animation: toast-in var(--t-base) ease-out;
 }
 
 .toast--danger {
-  border-color: var(--fire-dim);
-  color: var(--fire);
+  background: var(--s-bad);
 }
 .toast--ok {
-  border-color: var(--ok);
-  color: var(--ok);
+  background: var(--s-done);
 }
 
 @keyframes toast-in {
@@ -490,12 +819,12 @@
   }
 }
 
-/* ── Модалка / нижня шторка ─────────────────────────────────────────────── */
+/* ── Нижня шторка ───────────────────────────────────────────────────────── */
 
 .sheet-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(4, 8, 16, 0.72);
+  background: rgba(11, 15, 22, 0.45);
   z-index: 70;
   display: flex;
   align-items: flex-end;
@@ -506,9 +835,8 @@
   width: min(100%, 520px);
   max-height: 92dvh;
   overflow-y: auto;
-  background: var(--bg-raised);
-  border-radius: var(--r-lg) var(--r-lg) 0 0;
-  border-top: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  border-radius: var(--r) var(--r) 0 0;
   padding: var(--sp-5) var(--sp-4) calc(var(--sp-5) + env(safe-area-inset-bottom));
   animation: sheet-in var(--t-base) ease-out;
 }
@@ -520,28 +848,10 @@
 }
 
 .sheet__title {
-  font-size: 19px;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
   margin-bottom: var(--sp-4);
-}
-
-/* Причини скасування — кнопки з іконками, не випадайка:
-   курʼєр обирає в поспіху */
-.reason {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  width: 100%;
-  padding: var(--sp-3) var(--sp-4);
-  margin-bottom: var(--sp-2);
-  border-radius: var(--r-md);
-  background: var(--bg-sunken);
-  border: 1px solid var(--border);
-  font-size: 16px;
-  text-align: left;
-}
-
-.reason__icon {
-  font-size: 22px;
 }
 
 /* ── Форми ──────────────────────────────────────────────────────────────── */
@@ -552,164 +862,155 @@
 
 .field__label {
   display: block;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
-  color: var(--text-muted);
-  margin-bottom: var(--sp-2);
+  color: var(--ink-3);
+  margin-bottom: 6px;
 }
 
 .input {
   width: 100%;
-  padding: var(--sp-3);
-  border-radius: var(--r-md);
-  background: var(--bg-sunken);
-  border: 1px solid var(--border-strong);
-  color: var(--text);
-}
-
-.input:focus-visible {
-  outline: 2px solid var(--electric);
-  outline-offset: 1px;
+  padding: 13px 14px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  color: var(--ink);
 }
 
 .input--pin {
-  font-family: var(--font-mono);
   font-size: 30px;
+  font-weight: 650;
   letter-spacing: 0.4em;
   text-align: center;
   padding: var(--sp-4);
 }
 
-.hint {
-  font-size: 13px;
-  color: var(--text-faint);
-  margin-top: var(--sp-2);
-}
+/* ── Адмінські панелі ───────────────────────────────────────────────────── */
 
-.notice {
-  padding: var(--sp-3) var(--sp-4);
-  border-radius: var(--r-md);
-  border: 1px solid var(--border-strong);
-  background: var(--bg-sunken);
-  font-size: 14px;
-  margin-bottom: var(--sp-4);
-}
-
-.notice--warn {
-  border-color: var(--warn);
-  color: var(--warn);
-}
-.notice--danger {
-  border-color: var(--fire-dim);
-  color: var(--fire);
-}
-
-/* ── Фото ───────────────────────────────────────────────────────────────── */
-
-.photo-preview {
-  width: 100%;
-  border-radius: var(--r-md);
-  border: 1px solid var(--border-strong);
-  display: block;
-  margin-bottom: var(--sp-3);
-}
-
-/* ── Карта ──────────────────────────────────────────────────────────────── */
-
-/* Свайп між вкладками ігнорується всередині цього контейнера (B27) */
-.map {
-  height: 220px;
-  border-radius: var(--r-md);
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
   overflow: hidden;
-  border: 1px solid var(--border);
-  background: var(--bg-sunken);
-  margin-bottom: var(--sp-4);
-}
-
-.map--lg {
-  height: 380px;
-}
-
-.map__placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--text-faint);
-  font-size: 14px;
-}
-
-/* ── Таблиці адмінки ────────────────────────────────────────────────────── */
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-
-.table th {
-  text-align: left;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-faint);
-  padding: var(--sp-2);
-  border-bottom: 1px solid var(--border);
-}
-
-.table td {
-  padding: var(--sp-3) var(--sp-2);
-  border-bottom: 1px solid var(--border);
-}
-
-.table tbody tr {
-  cursor: pointer;
-}
-
-.table tbody tr:active {
-  background: var(--bg-raised);
-}
-
-.table-wrap {
-  overflow-x: auto;
-}
-
-/* ── Плитки метрик ──────────────────────────────────────────────────────── */
-
-.tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: var(--sp-3);
   margin-bottom: var(--sp-5);
 }
 
-.tile {
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  padding: var(--sp-3) var(--sp-4);
+.panel__head {
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
 }
 
-.tile__value {
-  font-family: var(--font-mono);
-  font-size: 26px;
-  font-weight: 700;
-  line-height: 1.1;
+.panel__head h3 {
+  font-size: 18px;
+  font-weight: 650;
 }
 
-.tile__label {
-  font-size: 12px;
-  color: var(--text-muted);
+.panel__head p {
+  font-size: 13px;
+  color: var(--ink-3);
   margin-top: 2px;
 }
 
-/* Курʼєрів онлайн: 0 при активних замовленнях — аварійний стан (B36) */
-.tile--alarm {
-  border-color: var(--fire);
-  background: rgba(255, 90, 60, 0.1);
+.panel__body {
+  padding: 20px;
 }
-.tile--alarm .tile__value {
-  color: var(--fire);
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  background: var(--line);
+}
+
+.kpi {
+  background: var(--surface);
+  padding: 17px 20px;
+}
+
+.kpi__l {
+  font-size: 12px;
+  color: var(--ink-3);
+  font-weight: 550;
+  margin-bottom: 7px;
+}
+
+.kpi__v {
+  font-size: 27px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+
+.kpi__s {
+  font-size: 12px;
+  color: var(--ink-3);
+  margin-top: 6px;
+}
+
+.kpi__v.good {
+  color: var(--s-done);
+}
+.kpi__v.bad {
+  color: var(--s-bad);
+}
+.kpi__v.brand {
+  color: var(--rocket);
+}
+
+/* ── Таблиці ────────────────────────────────────────────────────────────── */
+
+.tbl-scroll {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+  min-width: 560px;
+}
+
+th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+td {
+  padding: 13px 20px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+tbody tr[data-action] {
+  cursor: pointer;
+}
+
+tbody tr[data-action]:active {
+  background: var(--surface-2);
+}
+
+.cell-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
 }
 
 /* ── Логін ──────────────────────────────────────────────────────────────── */
@@ -725,39 +1026,67 @@
 }
 
 .login__logo {
-  font-family: var(--font-display);
   font-size: 30px;
   font-weight: 700;
-  margin-bottom: var(--sp-1);
+  letter-spacing: -0.03em;
+  margin-bottom: 4px;
 }
 
 .login__sub {
-  color: var(--text-muted);
+  color: var(--ink-2);
+  font-size: 15px;
   margin-bottom: var(--sp-6);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
    МЕДІА-ЗАПИТИ — ТІЛЬКИ В КІНЦІ ФАЙЛУ.
-   Це виправлений баг каскаду: десктопні правила адмінки перебивали
-   мобільну розкладку. Порядок тут має значення. Нічого не додавати нижче.
+   Виправлений баг каскаду: десктопні правила адмінки перебивали мобільну
+   розкладку. Порядок має значення. Нічого не додавати нижче.
    ══════════════════════════════════════════════════════════════════════════ */
 
-/* Десктоп: курʼєрські екрани в рамці телефона.
-   На мобільних (≤600px) рамка зникає — застосунок займає весь екран. */
 @media (min-width: 601px) {
+  /* Кур'єрські екрани — в рамці телефона на десктопі.
+     На мобільних (≤600px) рамка зникає, застосунок займає весь екран. */
   .shell--phone {
-    max-width: 420px;
+    max-width: 398px;
     margin: 24px auto;
-    min-height: min(860px, calc(100dvh - 48px));
-    border: 1px solid var(--border-strong);
-    border-radius: 28px;
-    overflow: hidden;
-    box-shadow: var(--shadow);
+    min-height: min(844px, calc(100dvh - 48px));
+    background: #0b0f16;
+    border-radius: 46px;
+    padding: 11px;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .shell--phone .nav {
+    border-radius: 36px 36px 0 0;
+    padding-top: 22px;
+  }
+
+  .shell--phone .netbar:first-child {
+    border-radius: 36px 36px 0 0;
+  }
+
+  .shell--phone .tabbar {
+    border-radius: 0 0 36px 36px;
+    padding-bottom: var(--sp-3);
   }
 
   .shell--admin .shell__body {
     max-width: 1080px;
     margin: 0 auto;
     width: 100%;
+    padding: var(--sp-4) var(--sp-5) var(--sp-6);
+  }
+
+  .shell--admin .nav {
+    max-width: 1080px;
+    margin: 0 auto;
+    width: 100%;
+    padding-left: var(--sp-5);
+    padding-right: var(--sp-5);
+  }
+
+  .map--lg {
+    height: 380px;
   }
 }

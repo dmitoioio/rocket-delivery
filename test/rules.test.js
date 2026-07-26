@@ -66,8 +66,16 @@ test('черга НЕ віддає телефон, точну адресу й о
 
 test('черга віддає рівно те, що потрібно для рішення «беру / не беру»', async () => {
   const [row] = await api.fetchQueue();
-  for (const field of ['code', 'destLocality', 'distanceKm', 'total', 'waitingBonus']) {
+  for (const field of ['code', 'destLocality', 'distanceKm', 'courierEarnings', 'waitingBonus']) {
     assert.ok(field in row, `у черзі має бути ${field}`);
+  }
+});
+
+test('черга показує заробіток курʼєра, а не суму чека', async () => {
+  const queue = await api.fetchQueue();
+  for (const row of queue) {
+    assert.equal(row.total, undefined, 'сума чека непрямо видає спосіб оплати');
+    assert.ok(row.courierEarnings > 0);
   }
 });
 

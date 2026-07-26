@@ -16,6 +16,7 @@ import * as admin from '../features/admin/index.js';
 import { attachSwipe } from '../features/shared/tabs.js';
 import { toast } from '../features/shared/toast.js';
 import { countdown, esc } from '../lib/format.js';
+import { icons } from '../features/shared/icons.js';
 
 let root = null;
 let lastRoute = null;
@@ -46,12 +47,14 @@ function render() {
   const mod = moduleFor(area);
   const isAdmin = area === 'admin';
 
+  const sub = mod.subtitle?.(state, tab) || '';
+
   root.innerHTML = `
     <div class="shell ${isAdmin ? 'shell--admin' : 'shell--phone'}">
       ${netbar(state)}
-      <header class="shell__head">
-        <h1 class="shell__title">${esc(mod.title(tab))}</h1>
-        ${isAdmin ? '' : `<button class="btn btn--ghost btn--sm" data-action="refresh">↻</button>`}
+      <header class="nav">
+        <div class="nav__title">${esc(mod.title(tab))}${sub ? `<small>${esc(sub)}</small>` : ''}</div>
+        <button class="nav__btn" data-action="refresh" aria-label="Оновити">${icons.refresh()}</button>
       </header>
       <main class="shell__body" id="screen">${mod.renderTab(state, tab)}</main>
       ${mod.tabsBar(state, tab)}
@@ -76,18 +79,19 @@ function netbar(state) {
 
   if (failed) {
     return `<div class="netbar netbar--offline">
-      ⚠️ ${failed} ${failed === 1 ? 'дія не відправилась' : 'дій не відправились'}
-      <button class="btn btn--ghost btn--sm" data-action="retry-outbox"
-              style="margin-left:auto;color:inherit">Спробувати ще</button>
+      ${icons.offline(15)} ${failed} ${failed === 1 ? 'дія не відправилась' : 'дій не відправились'}
+      <button data-action="retry-outbox">Спробувати ще</button>
     </div>`;
   }
   if (state.connection === 'offline') {
-    return `<div class="netbar netbar--offline">📵 Немає звʼязку${
-      queued ? ` · ${queued} в черзі` : ''
-    }</div>`;
+    return `<div class="netbar netbar--offline">
+      ${icons.offline(15)} Немає звʼязку${queued ? ` · ${queued} в черзі` : ''}
+    </div>`;
   }
   if (queued) {
-    return `<div class="netbar">⏳ ${queued} ${queued === 1 ? 'дія' : 'дій'} чекає відправки</div>`;
+    return `<div class="netbar">
+      ${icons.clock(15)} ${queued} ${queued === 1 ? 'дія чекає' : 'дій чекають'} відправки
+    </div>`;
   }
   return '';
 }

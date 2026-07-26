@@ -1,17 +1,25 @@
-/** Адмінка «Бос»: дашборд, курʼєри, готівка, аналітика, зарплата, фото, журнал. */
+/**
+ * Адмінка «Бос».
+ *
+ * Головне, що тут має бути видно: маржа платформи, середній час доставки
+ * і непідтверджена готівка. Без цих трьох чисел адмінка гарна, але не
+ * відповідає на питання «чи ми заробляємо і чи не псується сервіс».
+ */
 
 import * as db from '../../lib/db.js';
 import { getState, setState } from '../../lib/store.js';
 import { renderTabs } from '../shared/tabs.js';
 import { toast } from '../shared/toast.js';
+import { icons } from '../shared/icons.js';
 import {
   statusChip,
   statusLabel,
   emptyState,
   errorState,
   skeletonList,
-  tile,
-  section,
+  kpi,
+  panel,
+  avatar,
   esc,
   money,
   dateTime,
@@ -19,26 +27,37 @@ import {
 } from '../shared/ui.js';
 
 const TABS = [
-  { key: 'dashboard', label: 'Дашборд', icon: '🗺' },
-  { key: 'couriers', label: 'Курʼєри', icon: '🛵' },
-  { key: 'cash', label: 'Готівка', icon: '💵' },
-  { key: 'analytics', label: 'Аналітика', icon: '📈' },
-  { key: 'payroll', label: 'Зарплата', icon: '🧾' },
-  { key: 'photos', label: 'Фото', icon: '📷' },
-  { key: 'journal', label: 'Журнал', icon: '📚' },
+  { key: 'dashboard', label: 'Дашборд', icon: icons.dashboard },
+  { key: 'attention', label: 'Увага', icon: icons.active },
+  { key: 'cash', label: 'Готівка', icon: icons.cash },
+  { key: 'economy', label: 'Економіка', icon: icons.chart },
+  { key: 'couriers', label: 'Курʼєри', icon: icons.couriers },
+  { key: 'photos', label: 'Фото', icon: icons.photo },
+  { key: 'journal', label: 'Журнал', icon: icons.journal },
 ];
 
 export const tabKeys = TABS.map((t) => t.key);
-
 const TITLES = Object.fromEntries(TABS.map((t) => [t.key, t.label]));
 
 export function title(tab) {
   return TITLES[tab] || 'Адмінка';
 }
 
+export function subtitle(state) {
+  const s = state.admin?.stats;
+  return s ? `${s.online} ${s.online === 1 ? 'курʼєр' : 'курʼєрів'} на лінії` : '';
+}
+
 export function tabsBar(state, tab) {
-  const pending = state.admin?.handoffs.filter((h) => h.status === 'declared').length || 0;
-  const withBadge = TABS.map((t) => (t.key === 'cash' && pending ? { ...t, badge: pending } : t));
+  const a = state.admin;
+  const pendingCash = a?.handoffs.filter((h) => h.status === 'declared').length || 0;
+  const attention = a ? (a.stats.stale || 0) + (a.stats.failed || 0) + (a.stats.refunds || 0) : 0;
+
+  const withBadge = TABS.map((t) => {
+    if (t.key === 'cash' && pendingCash) return { ...t, badge: pendingCash };
+    if (t.key === 'attention' && attention) return { ...t, badge: attention };
+    return t;
+  });
   return renderTabs(withBadge, tab);
 }
 
@@ -58,14 +77,14 @@ export function renderTab(state, tab) {
   const a = state.admin;
 
   switch (tab) {
-    case 'couriers':
-      return couriers(a);
+    case 'attention':
+      return attention(a);
     case 'cash':
       return cash(a);
-    case 'analytics':
-      return analytics(a);
-    case 'payroll':
-      return payroll(a);
+    case 'economy':
+      return economy(a);
+    case 'couriers':
+      return couriers(a);
     case 'photos':
       return photos(a);
     case 'journal':
@@ -78,259 +97,349 @@ export function renderTab(state, tab) {
 /* ── Дашборд ────────────────────────────────────────────────────────────── */
 
 function dashboard(a) {
-  const { stats } = a;
-  // «Курʼєрів онлайн: 0» при активних замовленнях — аварійний стан (B36)
-  const alarm = stats.online === 0 && stats.active > 0;
+  const s = a.stats;
+  // Жоден курʼєр не онлайн при активних замовленнях — аварійний стан:
+  // за Glovo-моделі ніхто не зобовʼязаний виходити на зміну (B36)
+  const alarm = s.online === 0 && s.active > 0;
 
-  const activeOrders = a.orders.filter((o) =>
+  const active = a.orders.filter((o) =>
     ['ready', 'courier_assigned', 'picked_up', 'on_the_way'].includes(o.status)
   );
 
   return `
-    <div class="tiles">
-      ${tile(stats.active, 'Активних')}
-      ${tile(stats.stale, 'Висять > 15 хв', stats.stale > 0)}
-      ${tile(stats.online, 'Курʼєрів онлайн', alarm)}
-      ${tile(stats.refunds, 'Чекають рефанду', stats.refunds > 0)}
-    </div>
+    ${panel(
+      'Дашборд дня',
+      new Date().toLocaleDateString('uk-UA', { weekday: 'long', day: '2-digit', month: '2-digit' }),
+      `<div class="kpis">
+        ${kpi(s.delivered, 'Доставлено', { sub: `з ${s.total} замовлень` })}
+        ${kpi(s.avgMinutes ? `${s.avgMinutes} хв` : '—', 'Середній час', { sub: 'від «готово» до клієнта' })}
+        ${kpi(s.overdue, 'Прострочено', { sub: 'більш ніж +15 хв', tone: s.overdue ? 'bad' : '' })}
+        ${kpi(money(s.unconfirmedCash), 'Готівка не підтверджена', { tone: s.unconfirmedCash ? 'bad' : 'good' })}
+        ${kpi(money(s.platformEarnings), 'Заробіток платформи', { sub: `${s.delivered} × ${money(db.config.platformPerDelivery ?? 15)}`, tone: 'good' })}
+      </div>`,
+      statusChip(alarm ? 'failed_delivery' : 'delivered', `${s.online} на лінії`)
+    )}
 
     ${
       alarm
-        ? `<div class="notice notice--danger">Жоден курʼєр не онлайн, а замовлення чекають.
-             Ніхто не зобовʼязаний виходити на зміну — потрібне ручне втручання.</div>`
+        ? `<div class="callout callout--warn" style="margin-bottom:24px">
+             <strong>Жоден курʼєр не на лінії, а замовлення чекають.</strong>
+             За підрядної моделі ніхто не зобовʼязаний виходити на зміну —
+             потрібне ручне втручання.
+           </div>`
         : ''
     }
 
-    <div class="map map--lg" id="admin-map"><div class="map__placeholder">Карта замовлень</div></div>
-
-    ${section(
+    ${panel(
       'Активні замовлення',
-      activeOrders.length
-        ? activeOrders.map(orderRow).join('')
-        : emptyState({ icon: '✅', title: 'Активних замовлень немає' })
+      `${active.length} у роботі`,
+      active.length
+        ? `<div class="tbl-scroll"><table>
+            <thead><tr><th>Замовлення</th><th>Статус</th><th>Куди</th><th>Курʼєр</th><th>Сума</th></tr></thead>
+            <tbody>${active.map((o) => orderRow(o, a)).join('')}</tbody>
+          </table></div>`
+        : `<div class="panel__body">${emptyState({ icon: 'check', title: 'Активних замовлень немає' })}</div>`
     )}`;
 }
 
-function orderRow(o) {
+function orderRow(o, a) {
+  const courier = a.couriers.find((c) => c.id === o.courierId);
   const waiting =
     o.status === 'ready' && o.readyAt
-      ? `<span class="bonus">чекає ${esc(elapsed(o.readyAt))}</span>`
+      ? `<div class="tiny">чекає ${esc(elapsed(o.readyAt))}</div>`
       : '';
-  return `<article class="card" data-action="open-order" data-id="${esc(o.id)}">
-    <div class="card__top">
-      <span class="card__code">${esc(o.code)}</span>${statusChip(o.status)}
-    </div>
-    <div class="card__row" style="margin-bottom:0">
-      <span>${esc(o.destLocality)}</span>
-      <span class="mono">${esc(money(o.total))}</span>
-    </div>
-    ${waiting}
-  </article>`;
+  return `<tr data-action="open-order" data-id="${esc(o.id)}">
+    <td class="num">${esc(o.code)}</td>
+    <td>${statusChip(o.status)}${waiting}</td>
+    <td>${esc(o.destLocality)}</td>
+    <td>${courier ? `<div class="cell-name">${avatar(courier.fullName, true)}${esc(courier.fullName)}</div>` : '<span class="mut">—</span>'}</td>
+    <td class="num">${esc(money(o.total))}</td>
+  </tr>`;
+}
+
+/* ── Потребує уваги ─────────────────────────────────────────────────────── */
+
+/** Те, що система не змогла вирішити сама. */
+function attention(a) {
+  const rows = [];
+
+  for (const o of a.orders) {
+    if (o.status === 'failed_delivery') {
+      rows.push({
+        code: o.code,
+        what: statusChip('failed_delivery', reasonLabel(o.cancelReason?.reasonCode)),
+        who: a.couriers.find((c) => c.id === o.courierId)?.fullName || '—',
+        since: o.cancelledAt,
+        id: o.id,
+      });
+    } else if (
+      o.status === 'ready' &&
+      !o.courierId &&
+      o.readyAt &&
+      Date.now() - o.readyAt > 600000
+    ) {
+      rows.push({
+        code: o.code,
+        what: statusChip('preparing', 'ніхто не взяв'),
+        who: '—',
+        since: o.readyAt,
+        id: o.id,
+      });
+    } else if (o.paymentStatus === 'refund_needed') {
+      rows.push({
+        code: o.code,
+        what: statusChip('failed_delivery', 'потрібен рефанд'),
+        who: '—',
+        since: o.cancelledAt,
+        id: o.id,
+      });
+    }
+  }
+
+  if (!rows.length) {
+    return panel(
+      'Потребує уваги',
+      'Те, що система не змогла вирішити сама',
+      `<div class="panel__body">${emptyState({
+        icon: 'check',
+        title: 'Усе під контролем',
+        text: 'Замовлень, що зависли або збились, немає.',
+      })}</div>`
+    );
+  }
+
+  return panel(
+    'Потребує уваги',
+    `${rows.length} ${rows.length === 1 ? 'ситуація' : 'ситуацій'}`,
+    `<div class="tbl-scroll"><table>
+      <thead><tr><th>Замовлення</th><th>Що сталось</th><th>Курʼєр</th><th>Скільки висить</th></tr></thead>
+      <tbody>${rows
+        .map(
+          (r) => `<tr data-action="open-order" data-id="${esc(r.id)}">
+        <td class="num">${esc(r.code)}</td>
+        <td>${r.what}</td>
+        <td>${esc(r.who)}</td>
+        <td class="num">${esc(r.since ? elapsed(r.since) : '—')}</td>
+      </tr>`
+        )
+        .join('')}</tbody>
+    </table></div>`
+  );
+}
+
+function reasonLabel(code) {
+  return (
+    {
+      client_unreachable: 'клієнт не відповідає',
+      address_not_found: 'не знайшов адресу',
+      client_refused: 'клієнт відмовився',
+      vehicle_problem: 'проблема зі скутером',
+    }[code] || 'збій доставки'
+  );
+}
+
+/* ── Готівка та звірка ──────────────────────────────────────────────────── */
+
+function cash(a) {
+  const pending = a.handoffs.filter((h) => h.status === 'declared');
+  const nameOf = (id) => a.couriers.find((c) => c.id === id)?.fullName || id;
+
+  const reconciliation = `<div class="tbl-scroll"><table>
+    <thead><tr><th>Курʼєр</th><th>На руках</th><th>Заявлено</th><th>Підтверджено</th><th>Різниця</th><th>Статус</th></tr></thead>
+    <tbody>${a.couriers
+      .map((c) => {
+        const hs = a.handoffs.filter((h) => h.courierId === c.id);
+        const declared = hs.reduce((s, h) => s + h.declaredAmount, 0);
+        const confirmed = hs.reduce((s, h) => s + (h.confirmedAmount ?? 0), 0);
+        const diff = confirmed - declared;
+        const disputed = hs.some((h) => h.status === 'disputed');
+        const waiting = hs.some((h) => h.status === 'declared');
+        return `<tr>
+          <td><div class="cell-name">${avatar(c.fullName, true)}${esc(c.fullName)}</div></td>
+          <td class="num">${esc(money(c.cashOnHand))}</td>
+          <td class="num">${esc(money(declared))}</td>
+          <td class="num">${confirmed ? esc(money(confirmed)) : '<span class="mut">—</span>'}</td>
+          <td class="num" style="font-weight:650;color:${diff === 0 ? 'var(--s-done)' : 'var(--s-bad)'}">
+            ${esc(money(diff))}
+          </td>
+          <td>${
+            disputed
+              ? statusChip('failed_delivery', 'розбіжність')
+              : waiting
+                ? statusChip('preparing', 'чекає підтвердження')
+                : statusChip('delivered', 'звірено')
+          }</td>
+        </tr>`;
+      })
+      .join('')}</tbody>
+  </table></div>`;
+
+  return `
+    ${panel(
+      'Чекають підтвердження',
+      pending.length ? `${pending.length} на розгляді` : 'Нових заявок немає',
+      pending.length
+        ? `<div class="panel__body">${pending
+            .map(
+              (h) => `<div class="card" style="margin-bottom:12px">
+        <div class="row">
+          <div class="cell-name">${avatar(nameOf(h.courierId), true)}${esc(nameOf(h.courierId))}</div>
+          <span class="mid num">${esc(money(h.declaredAmount))}</span>
+        </div>
+        <div class="tiny" style="margin-top:6px">Заявлено ${esc(dateTime(h.declaredAt))}</div>
+        <div class="field" style="margin:12px 0 0">
+          <label class="field__label" for="amt-${esc(h.id)}">Скільки прийнято фактично</label>
+          <input class="input num" id="amt-${esc(h.id)}" inputmode="numeric" value="${esc(h.declaredAmount)}">
+        </div>
+        <button class="btn btn-dark" data-action="confirm-handoff" data-id="${esc(h.id)}"
+                style="margin-top:12px">Підтвердити</button>
+      </div>`
+            )
+            .join('')}</div>`
+        : `<div class="panel__body">${emptyState({ icon: 'check', title: 'Усе підтверджено' })}</div>`
+    )}
+
+    ${panel('Готівка та звірка', 'Хто скільки взяв, скільки здав і скільки винен', reconciliation)}
+
+    <div class="callout callout--info">
+      Готівка клієнтів — гроші закладу. Розбіжність фіксується як борг
+      автоматично й потрапляє в утримання із заробітку, а не залишається
+      усною суперечкою.
+    </div>`;
+}
+
+/* ── Економіка ──────────────────────────────────────────────────────────── */
+
+function economy(a) {
+  const s = a.stats;
+  const margin = s.collectedDelivery - s.courierPayout;
+
+  return `
+    ${panel(
+      'Економіка',
+      'Поточний період · усі заклади',
+      `<div class="kpis">
+        ${kpi(s.delivered, 'Доставлено')}
+        ${kpi(money(s.collectedDelivery), 'Зібрано за доставку', { sub: `${s.delivered} × ${money(db.config.deliveryFee)}` })}
+        ${kpi(`−${money(s.courierPayout)}`, 'Виплатимо курʼєрам')}
+        ${kpi(money(margin), 'Лишається платформі', {
+          sub: 'до витрат на скутери й сервіси',
+          tone: margin > 0 ? 'good' : 'bad',
+        })}
+      </div>`,
+      statusChip('overdue', `комісія ${money(db.config.platformPerDelivery ?? 15)} з доставки`)
+    )}
+
+    <div class="callout callout--warn">
+      <strong>Ці числа поки заглушка.</strong> Розподіл 35 ₴ курʼєру / 15 ₴
+      платформі взято з макета для прикладу. Реальний розподіл — рішення
+      власника, воно відкладене (питання Q2 і Q3). Головне, що поле існує,
+      рахується й маржа платформи ненульова: у першій версії брифу вона
+      дорівнювала нулю, і цього ніхто не помічав.
+    </div>`;
 }
 
 /* ── Курʼєри ────────────────────────────────────────────────────────────── */
 
 function couriers(a) {
-  return `
-    <button class="btn btn--primary" data-action="open-create-courier" style="margin-bottom:16px">
-      + СТВОРИТИ КУРʼЄРА
-    </button>
-    ${a.couriers
-      .map(
-        (c) => `<article class="card">
-      <div class="card__top">
-        <span class="card__code">${esc(c.fullName)}</span>
-        <span class="chip ${c.status === 'online' ? 'chip--ready' : 'chip--cancelled'}">
-          <span class="chip__dot"></span>${c.status === 'online' ? 'онлайн' : 'офлайн'}</span>
-      </div>
-      <div class="card__biz mono">${esc(c.login)}</div>
-      <div class="line"><span class="line__label">Доставок</span>
-        <span class="mono">${esc(c.completedDeliveries)}</span></div>
-      <div class="line"><span class="line__label">Готівка на руках</span>
-        <span class="mono">${esc(money(c.cashOnHand))}</span></div>
-      <button class="btn btn--secondary btn--sm" data-action="toggle-courier"
-              data-id="${esc(c.id)}" data-active="${c.isActive}" style="margin-top:12px">
-        ${c.isActive ? 'Деактивувати' : 'Активувати'}
-      </button>
-    </article>`
-      )
-      .join('')}`;
-}
+  const earningsOf = (id) =>
+    a.earnings.filter((e) => e.courierId === id).reduce((s, e) => s + e.amount, 0);
+  const countOf = (id) => a.earnings.filter((e) => e.courierId === id).length;
 
-/* ── Готівка ────────────────────────────────────────────────────────────── */
-
-function cash(a) {
-  const pending = a.handoffs.filter((h) => h.status === 'declared');
-  const done = a.handoffs.filter((h) => h.status !== 'declared');
-  const nameOf = (id) => a.couriers.find((c) => c.id === id)?.fullName || id;
-
-  return `
-    ${section(
-      'Чекають підтвердження',
-      pending.length
-        ? pending
-            .map(
-              (h) => `<article class="card">
-        <div class="card__top">
-          <span class="card__code">${esc(nameOf(h.courierId))}</span>
-          <span class="card__total mono">${esc(money(h.declaredAmount))}</span>
-        </div>
-        <div class="hint">Заявлено ${esc(dateTime(h.declaredAt))}</div>
-        <div class="field" style="margin-top:12px">
-          <label class="field__label" for="amt-${esc(h.id)}">Скільки прийнято фактично</label>
-          <input class="input mono" id="amt-${esc(h.id)}" inputmode="numeric"
-                 value="${esc(h.declaredAmount)}">
-        </div>
-        <button class="btn btn--primary" data-action="confirm-handoff" data-id="${esc(h.id)}">
-          ПІДТВЕРДИТИ
-        </button>
-      </article>`
-            )
-            .join('')
-        : emptyState({ icon: '✅', title: 'Немає заявок на підтвердження' })
-    )}
-
-    ${section(
-      'Історія здач',
-      done.length
-        ? done
-            .map((h) => {
-              const diff = (h.confirmedAmount ?? 0) - h.declaredAmount;
-              return `<article class="card ${h.status === 'disputed' ? '' : ''}">
-          <div class="card__top">
-            <span>${esc(nameOf(h.courierId))}</span>
-            ${
-              h.status === 'disputed'
-                ? `<span class="chip chip--cash"><span class="chip__dot"></span>розбіжність</span>`
-                : `<span class="chip chip--done"><span class="chip__dot"></span>підтверджено</span>`
-            }
-          </div>
-          <div class="line"><span class="line__label">Заявлено</span>
-            <span class="mono">${esc(money(h.declaredAmount))}</span></div>
-          <div class="line"><span class="line__label">Прийнято</span>
-            <span class="mono">${esc(money(h.confirmedAmount ?? 0))}</span></div>
-          ${
-            diff !== 0
-              ? `<div class="notice notice--danger" style="margin:12px 0 0">
-                   Різниця ${esc(money(diff))} — зафіксований борг</div>`
-              : ''
-          }
-        </article>`;
-            })
-            .join('')
-        : emptyState({ icon: '🗂', title: 'Історія порожня' })
-    )}`;
-}
-
-/* ── Аналітика ──────────────────────────────────────────────────────────── */
-
-function analytics(a) {
-  const delivered = a.orders.filter((o) => o.status === 'delivered');
-  const revenue = delivered.reduce((s, o) => s + o.total, 0);
-  const avg = delivered.length ? Math.round(revenue / delivered.length) : 0;
-
-  // Головна метрика черрі-пікінгу: скільки замовлення чекало курʼєра (B35)
-  const waits = a.orders
-    .filter((o) => o.readyAt && o.courierAssignedAt)
-    .map((o) => (o.courierAssignedAt - o.readyAt) / 60000);
-  const avgWait = waits.length ? (waits.reduce((s, w) => s + w, 0) / waits.length).toFixed(1) : '—';
-
-  // Точність прогнозу закладу (B9)
-  const accuracy = a.orders
-    .filter((o) => o.readyAt && o.estimatedReadyAt)
-    .map((o) => Math.abs(o.readyAt - o.estimatedReadyAt) / 60000);
-  const avgAccuracy = accuracy.length
-    ? (accuracy.reduce((s, x) => s + x, 0) / accuracy.length).toFixed(1)
-    : '—';
-
-  return `
-    <div class="tiles">
-      ${tile(delivered.length, 'Доставлено')}
-      ${tile(money(revenue), 'Оборот')}
-      ${tile(money(avg), 'Середній чек')}
-      ${tile(`${avgWait} хв`, 'Час до взяття')}
-      ${tile(`±${avgAccuracy} хв`, 'Точність закладу')}
-    </div>
-    <div class="notice">
-      «Час до взяття» — головний показник черрі-пікінгу. Якщо він росте по
-      конкретних напрямках, туди перестали їздити.
-    </div>`;
-}
-
-/* ── Зарплата ───────────────────────────────────────────────────────────── */
-
-function payroll(a) {
-  const byCourier = new Map();
-  for (const e of a.earnings) {
-    const cur = byCourier.get(e.courierId) || { count: 0, amount: 0 };
-    byCourier.set(e.courierId, { count: cur.count + 1, amount: cur.amount + e.amount });
-  }
-
-  if (!byCourier.size) return emptyState({ icon: '🧾', title: 'Нарахувань поки немає' });
-
-  return `<div class="table-wrap"><table class="table">
-    <thead><tr><th>Курʼєр</th><th>Доставок</th><th>До виплати</th></tr></thead>
-    <tbody>${[...byCourier.entries()]
-      .map(([id, v]) => {
-        const c = a.couriers.find((x) => x.id === id);
-        return `<tr><td>${esc(c?.fullName || id)}</td>
-          <td class="mono">${esc(v.count)}</td>
-          <td class="mono">${esc(money(v.amount))}</td></tr>`;
-      })
-      .join('')}</tbody>
-  </table></div>
-  <div class="notice" style="margin-top:16px">
-    Ставка фіксується на момент доставки, не читається з поточного конфіга —
-    зміна тарифу не перераховує історію.
-  </div>`;
+  return panel(
+    'Курʼєри та зарплата',
+    'Поточний тиждень',
+    `<div class="tbl-scroll"><table>
+      <thead><tr><th>Курʼєр</th><th>Логін</th><th>Доставок</th><th>Готівка</th><th>До виплати</th><th></th></tr></thead>
+      <tbody>${a.couriers
+        .map(
+          (c) => `<tr>
+        <td><div class="cell-name">${avatar(c.fullName, true)}${esc(c.fullName)}</div>
+          ${c.isActive ? '' : '<div class="tiny">деактивований</div>'}</td>
+        <td class="num mut">${esc(c.login)}</td>
+        <td class="num">${esc(countOf(c.id))}</td>
+        <td class="num">${esc(money(c.cashOnHand))}</td>
+        <td class="num" style="font-weight:650">${esc(money(earningsOf(c.id)))}</td>
+        <td><button class="btn btn-ghost btn-sm" data-action="toggle-courier"
+              data-id="${esc(c.id)}" data-active="${c.isActive}">
+              ${c.isActive ? 'Деактивувати' : 'Активувати'}</button></td>
+      </tr>`
+        )
+        .join('')}</tbody>
+    </table></div>`,
+    `<button class="btn btn-dark btn-sm" data-action="open-create-courier">Створити курʼєра</button>`
+  );
 }
 
 /* ── Фото ───────────────────────────────────────────────────────────────── */
 
 function photos(a) {
   const withPhoto = a.orders.filter((o) => o.proofPhotoPath);
-  if (!withPhoto.length) return emptyState({ icon: '📷', title: 'Фото поки немає' });
 
   return `
-    <div class="notice">Фото зберігаються 90 днів, потім видаляються автоматично.
-      Це персональні дані — доступ лише адміну й закладу-власнику.</div>
-    ${withPhoto
-      .map(
-        (o) => `<article class="card">
-      <div class="card__top">
-        <span class="card__code">${esc(o.code)}</span>${statusChip(o.status)}
-      </div>
-      <div class="hint">${esc(dateTime(o.deliveredAt))}</div>
-      ${o.pinBypassed ? `<div class="notice notice--warn" style="margin-top:12px">PIN не підтверджено — курʼєр скористався обходом</div>` : ''}
-    </article>`
-      )
-      .join('')}`;
+    ${panel(
+      'Фото підтверджень',
+      `${withPhoto.length} за поточний період`,
+      withPhoto.length
+        ? `<div class="tbl-scroll"><table>
+            <thead><tr><th>Замовлення</th><th>Коли</th><th>Код клієнта</th><th>Статус</th></tr></thead>
+            <tbody>${withPhoto
+              .map(
+                (o) => `<tr data-action="open-order" data-id="${esc(o.id)}">
+              <td class="num">${esc(o.code)}</td>
+              <td class="num">${esc(dateTime(o.deliveredAt))}</td>
+              <td>${o.pinBypassed ? statusChip('preparing', 'обхід коду') : statusChip('delivered', 'підтверджено')}</td>
+              <td>${statusChip(o.status)}</td>
+            </tr>`
+              )
+              .join('')}</tbody>
+          </table></div>`
+        : `<div class="panel__body">${emptyState({ icon: 'photo', title: 'Фото поки немає' })}</div>`
+    )}
+
+    <div class="callout">
+      Фото зберігаються 90 днів, потім видаляються автоматично. Це персональні
+      дані — доступ лише адміну й закладу-власнику замовлення.
+    </div>`;
 }
 
 /* ── Журнал ─────────────────────────────────────────────────────────────── */
 
 function journal(a) {
-  if (!a.events.length) return emptyState({ icon: '📚', title: 'Журнал порожній' });
+  if (!a.events.length) {
+    return panel(
+      'Журнал переходів',
+      'append-only',
+      `<div class="panel__body">${emptyState({ icon: 'journal', title: 'Журнал порожній' })}</div>`
+    );
+  }
 
   const codeOf = (id) => a.orders.find((o) => o.id === id)?.code || id;
 
-  return `<div class="table-wrap"><table class="table">
-    <thead><tr><th>Час</th><th>Замовлення</th><th>Перехід</th><th>Хто</th></tr></thead>
-    <tbody>${[...a.events]
-      .reverse()
-      .map(
-        (e) => `<tr data-action="open-order" data-id="${esc(e.orderId)}">
-        <td class="mono">${esc(dateTime(e.createdAt))}</td>
-        <td class="mono">${esc(codeOf(e.orderId))}</td>
-        <td>${esc(statusLabel(e.fromStatus))} → ${esc(statusLabel(e.toStatus))}</td>
-        <td>${esc(e.actorRole)}</td>
-      </tr>`
-      )
-      .join('')}</tbody>
-  </table></div>
-  <div class="notice" style="margin-top:16px">
-    Журнал append-only: рядки не редагуються й не видаляються ніким, включно з адміном.
-  </div>`;
+  return `
+    ${panel(
+      'Журнал переходів',
+      `${a.events.length} записів`,
+      `<div class="tbl-scroll"><table>
+        <thead><tr><th>Час</th><th>Замовлення</th><th>Перехід</th><th>Хто</th></tr></thead>
+        <tbody>${[...a.events]
+          .reverse()
+          .map(
+            (e) => `<tr data-action="open-order" data-id="${esc(e.orderId)}">
+          <td class="num">${esc(dateTime(e.createdAt))}</td>
+          <td class="num">${esc(codeOf(e.orderId))}</td>
+          <td>${esc(statusLabel(e.fromStatus))} → <strong>${esc(statusLabel(e.toStatus))}</strong></td>
+          <td class="mut">${esc(e.actorRole)}</td>
+        </tr>`
+          )
+          .join('')}</tbody>
+      </table></div>`
+    )}
+
+    <div class="callout">
+      Журнал append-only: рядки не редагуються й не видаляються ніким,
+      включно з адміном. Без цього спір «я тиснув доставлено» недоказовий.
+    </div>`;
 }
 
 /* ── Шторки ─────────────────────────────────────────────────────────────── */
@@ -338,7 +447,6 @@ function journal(a) {
 export function renderOverlay(state) {
   const sheet = state.sheet;
   if (!sheet) return '';
-
   if (sheet.type === 'create-courier') return createCourierSheet(sheet);
   if (sheet.type === 'order') return orderSheet(state, sheet.orderId);
   return '';
@@ -350,16 +458,16 @@ function createCourierSheet(sheet) {
       <div class="sheet" data-stop role="dialog" aria-modal="true">
         <h2 class="sheet__title">Курʼєра створено</h2>
         <div class="card">
-          <div class="line"><span class="line__label">Логін</span>
-            <strong class="mono">${esc(sheet.result.login)}</strong></div>
-          <div class="line"><span class="line__label">Пароль</span>
-            <strong class="mono">${esc(sheet.result.password)}</strong></div>
+          <div class="row"><span class="mut">Логін</span>
+            <strong class="num">${esc(sheet.result.login)}</strong></div>
+          <div class="row"><span class="mut">Пароль</span>
+            <strong class="num">${esc(sheet.result.password)}</strong></div>
         </div>
-        <div class="notice notice--warn">
-          Пароль показується один раз — саме так система й працює.
-          Ніде у відкритому вигляді він не зберігається. Передай його зараз.
+        <div class="callout callout--warn" style="margin-top:14px">
+          <strong>Пароль показується один раз</strong> — саме так система й
+          працює. Ніде у відкритому вигляді він не зберігається. Передай його зараз.
         </div>
-        <button class="btn btn--primary" data-action="close-sheet">ГОТОВО</button>
+        <button class="btn btn-dark" data-action="close-sheet" style="margin-top:16px">Готово</button>
       </div></div>`;
   }
 
@@ -372,10 +480,10 @@ function createCourierSheet(sheet) {
       </div>
       <div class="field">
         <label class="field__label" for="nc-phone">Телефон</label>
-        <input class="input" id="nc-phone" inputmode="tel" autocomplete="off">
+        <input class="input num" id="nc-phone" inputmode="tel" autocomplete="off">
       </div>
-      <button class="btn btn--primary" data-action="create-courier">СТВОРИТИ</button>
-      <button class="btn btn--ghost" data-action="close-sheet" style="margin-top:8px">Назад</button>
+      <button class="btn btn-dark" data-action="create-courier">Створити</button>
+      <button class="btn btn-quiet" data-action="close-sheet" style="margin-top:4px">Назад</button>
     </div></div>`;
 }
 
@@ -386,26 +494,38 @@ function orderSheet(state, orderId) {
 
   return `<div class="sheet-backdrop" data-action="close-sheet">
     <div class="sheet" data-stop role="dialog" aria-modal="true">
-      <h2 class="sheet__title">${esc(o.code)}</h2>
-      ${statusChip(o.status)}
-      <div class="card" style="margin-top:16px">
-        <div class="line"><span class="line__label">Адреса</span><span>${esc(o.destAddressText)}</span></div>
-        <div class="line"><span class="line__label">Орієнтир</span><span>${esc(o.destLandmark || '—')}</span></div>
-        <div class="line"><span class="line__label">Клієнт</span><span>${esc(o.clientName)}</span></div>
-        <div class="line"><span class="line__label">Оплата</span>
-          <span>${o.paymentMethod === 'cash' ? 'готівка' : 'онлайн'}</span></div>
-        <div class="line"><span class="line__label">Сума</span>
-          <span class="mono">${esc(money(o.total))}</span></div>
-        <div class="line"><span class="line__label">Курʼєр</span>
-          <span>${esc(courier?.fullName || '—')}</span></div>
-        ${
-          o.paymentStatus === 'refund_needed'
-            ? `<div class="notice notice--danger" style="margin-top:12px">
-                 Потрібен рефанд — гроші клієнта досі не повернуті</div>`
-            : ''
-        }
+      <div class="row" style="margin-bottom:14px">
+        <h2 class="sheet__title num" style="margin:0">${esc(o.code)}</h2>
+        ${statusChip(o.status)}
       </div>
-      <button class="btn btn--secondary" data-action="close-sheet">Закрити</button>
+
+      <div class="card">
+        <div class="lbl">Адреса доставки</div>
+        <div class="addr-line">${esc(o.destAddressText)}</div>
+        ${o.destLandmark ? `<div class="landmark">${esc(o.destLandmark)}</div>` : ''}
+      </div>
+
+      <div class="card">
+        <div class="row"><span class="mut">Клієнт</span><span>${esc(o.clientName)}</span></div>
+        <div class="row"><span class="mut">Оплата</span>
+          <span>${o.paymentMethod === 'cash' ? 'готівка' : 'онлайн'}</span></div>
+        <div class="row"><span class="mut">Сума</span>
+          <span class="num" style="font-weight:650">${esc(money(o.total))}</span></div>
+        <div class="row"><span class="mut">Курʼєр</span>
+          <span>${esc(courier?.fullName || '—')}</span></div>
+        ${o.returnCount ? `<div class="row"><span class="mut">Повернень у чергу</span><span class="num">${esc(o.returnCount)}</span></div>` : ''}
+      </div>
+
+      ${
+        o.paymentStatus === 'refund_needed'
+          ? `<div class="callout callout--warn">
+               <strong>Потрібен рефанд.</strong> Гроші клієнта досі не повернуті.
+               Процес поки ручний — платіжного провайдера не визначено (Q6).
+             </div>`
+          : ''
+      }
+
+      <button class="btn btn-ghost" data-action="close-sheet" style="margin-top:16px">Закрити</button>
     </div></div>`;
 }
 
@@ -442,7 +562,10 @@ export async function handle(action, el) {
     case 'confirm-handoff': {
       const id = el.dataset.id;
       const amount = Number(document.getElementById(`amt-${id}`)?.value);
-      if (!Number.isFinite(amount)) return (toast('Вкажи суму', 'danger'), true);
+      if (!Number.isFinite(amount)) {
+        toast('Вкажи суму', 'danger');
+        return true;
+      }
       try {
         const h = await db.confirmHandoff(id, amount);
         toast(

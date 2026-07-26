@@ -45,7 +45,11 @@ export const demoCredentials = USERS.map((u) => ({
 
 export const config = {
   deliveryFee: 50,
-  courierPerDelivery: 40,
+  // 35 ₴ кур'єру / 15 ₴ платформі — числа з макета CSTL LIFE.
+  // Досі заглушка: реальний розподіл — рішення власника (Q2/Q3 відкладені).
+  // Головне, що поле існує і рахується, а маржа платформи ненульова.
+  courierPerDelivery: 35,
+  platformPerDelivery: 15,
   maxDeliveryRadiusKm: 15,
   maxActiveOrders: 1,
   cashLimit: 2000,
@@ -346,7 +350,9 @@ export async function fetchQueue() {
       status: o.status,
       destLocality: o.destLocality,
       distanceKm: o.distanceKm,
-      total: o.total,
+      // Заробіток кур'єра, а НЕ сума чека: сума чека розкриває спосіб
+      // оплати непрямо (кругле число = готівка) і кур'єру не потрібна
+      courierEarnings: config.courierPerDelivery + (o.waitingBonus || 0),
       waitingBonus: o.waitingBonus,
       estimatedReadyAt: o.estimatedReadyAt,
       readyAt: o.readyAt,
@@ -370,8 +376,12 @@ export async function fetchActive(courierId) {
 
 export async function fetchHistory(courierId) {
   await lag();
+  const earnedFor = (orderId) =>
+    db.earnings.filter((e) => e.orderId === orderId).reduce((s, e) => s + e.amount, 0);
+
   return clone(
     db.orders
+      .map((o) => ({ ...o, courierEarnings: earnedFor(o.id) }))
       .filter(
         (o) =>
           o.courierId === courierId &&
@@ -580,12 +590,56 @@ export async function getOrderContact(orderId, courierId) {
 
 /* ── Адмін ──────────────────────────────────────────────────────────────── */
 
+/**
+ * Метрики, без яких адмінка гарна, але не відповідає на питання
+ * «чи ми заробляємо і чи не псується сервіс»:
+ * маржа платформи, середній час доставки, непідтверджена готівка.
+ */
+function buildStats(orders, now) {
+  const activeStatuses = ['ready', 'courier_assigned', 'picked_up', 'on_the_way'];
+  const delivered = orders.filter((o) => o.status === 'delivered');
+
+  const spans = delivered
+    .filter((o) => o.readyAt && o.deliveredAt)
+    .map((o) => (o.deliveredAt - o.readyAt) / 60000);
+
+  // «Прострочено» — факт перевищив обіцяний час більш ніж на 15 хвилин.
+  // Головна метрика якості: без неї не видно, що сервіс погіршується.
+  const overdue = delivered.filter(
+    (o) => o.estimatedReadyAt && o.deliveredAt && o.deliveredAt - o.estimatedReadyAt > min(45)
+  ).length;
+
+  const unconfirmedCash = db.cashHandoffs
+    .filter((h) => h.status === 'declared')
+    .reduce((s, h) => s + h.declaredAmount, 0);
+
+  const onHand = db.couriers.reduce((s, c) => s + c.cashOnHand, 0);
+
+  return {
+    active: orders.filter((o) => activeStatuses.includes(o.status)).length,
+    stale: orders.filter(
+      (o) => o.status === 'ready' && !o.courierId && o.readyAt && now - o.readyAt > min(15)
+    ).length,
+    online: db.couriers.filter((c) => c.status === 'online').length,
+    delivered: delivered.length,
+    total: orders.length,
+    refunds: orders.filter((o) => o.paymentStatus === 'refund_needed').length,
+    failed: orders.filter((o) => o.status === 'failed_delivery').length,
+    avgMinutes: spans.length ? Math.round(spans.reduce((s, x) => s + x, 0) / spans.length) : null,
+    overdue,
+    unconfirmedCash: unconfirmedCash + onHand,
+    // Маржа платформи — те, чого в прототипі не було взагалі
+    platformEarnings: delivered.length * config.platformPerDelivery,
+    collectedDelivery: delivered.length * config.deliveryFee,
+    courierPayout: db.earnings.reduce((s, e) => s + e.amount, 0),
+  };
+}
+
 export async function fetchAdminOverview() {
   await lag();
   tickServer();
   const now = Date.now();
   const orders = clone(db.orders);
-  const activeStatuses = ['ready', 'courier_assigned', 'picked_up', 'on_the_way'];
   return {
     business: clone(db.business),
     orders,
@@ -594,15 +648,7 @@ export async function fetchAdminOverview() {
     earnings: clone(db.earnings),
     events: clone(db.events),
     photos: clone(db.photos),
-    stats: {
-      active: orders.filter((o) => activeStatuses.includes(o.status)).length,
-      stale: orders.filter(
-        (o) => o.status === 'ready' && !o.courierId && o.readyAt && now - o.readyAt > min(15)
-      ).length,
-      online: db.couriers.filter((c) => c.status === 'online').length,
-      delivered: orders.filter((o) => o.status === 'delivered').length,
-      refunds: orders.filter((o) => o.paymentStatus === 'refund_needed').length,
-    },
+    stats: buildStats(orders, now),
   };
 }
 
