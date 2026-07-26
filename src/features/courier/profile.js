@@ -81,12 +81,16 @@ export function render(state) {
  * Розбіжність стає зафіксованим боргом, а не усною суперечкою (ADR-0008).
  */
 export function handoffSheet(courier, orders = []) {
+  // Назва закладу приходить із даних, а не хардкодиться: пілот на «Суші Мар»,
+  // але другий заклад не має вимагати переписування UI (docs/01)
+  const business = orders.find((o) => o.businessName)?.businessName;
+
   return `<div class="sheet-backdrop" data-action="close-sheet">
     <div class="sheet" role="dialog" aria-modal="true" data-stop>
       <h2 class="sheet__title">Здача готівки</h2>
 
       <div class="card card--hot" style="text-align:center;padding:20px 15px">
-        <div class="lbl">Маєш здати в «Суші Мар»</div>
+        <div class="lbl">Маєш здати ${business ? `в «${esc(business)}»` : 'у заклад'}</div>
         <div class="huge num" style="margin:5px 0 4px">${esc(money(courier.cashOnHand))}</div>
         <div class="tiny">за ${esc(deliveries(orders.length || 0))} готівкою</div>
       </div>

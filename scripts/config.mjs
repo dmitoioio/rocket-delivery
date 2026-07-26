@@ -44,6 +44,28 @@ export function adapterPath() {
   return isProduction() ? 'src/lib/adapters/supabase.js' : 'src/lib/adapters/mock.js';
 }
 
+/**
+ * Демо-вхід одним кліком. У продакшені підставляється заглушка, тож
+ * кнопок ролей і демо-тексту в бандлі немає фізично, а не як мертвий код.
+ *
+ * ⚠️ Саме підміна модуля, а не `if (isDemo)`: esbuild не згортає
+ * імпортовану константу в умові, і перевірене вимірюванням — розмітка
+ * лишалась у бандлі. Гарантія має бути структурною (B18).
+ */
+export function demoLoginPath() {
+  return isProduction()
+    ? 'src/features/auth/demo-login.stub.js'
+    : 'src/features/auth/demo-login.js';
+}
+
+/** Аліаси модулів, що підміняються на збірці. */
+export function buildAliases(resolve) {
+  return {
+    '#adapter': resolve(adapterPath()),
+    '#demo-login': resolve(demoLoginPath()),
+  };
+}
+
 export function publicEnvDefine() {
   return Object.fromEntries(
     PUBLIC_ENV.map((k) => [`process.env.${k}`, JSON.stringify(process.env[k] ?? '')])

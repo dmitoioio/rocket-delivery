@@ -34,7 +34,9 @@ const USERS = [
  * Supabase-адаптер цього поля не експортує, тож підказки просто немає.
  */
 export const demoCredentials = USERS.map((u) => ({
-  role: u.role === 'admin' ? 'Адмін' : 'Курʼєр',
+  role: u.role,
+  label: u.role === 'admin' ? 'Адміністратор' : 'Курʼєр',
+  name: u.role === 'admin' ? 'Бос · дашборд і гроші' : 'Олег Ткачук · черга й доставка',
   login: u.login,
   password: u.password,
 }));
@@ -381,7 +383,11 @@ export async function fetchHistory(courierId) {
 
   return clone(
     db.orders
-      .map((o) => ({ ...o, courierEarnings: earnedFor(o.id) }))
+      .map((o) => ({
+        ...o,
+        courierEarnings: earnedFor(o.id),
+        businessName: db.business.name,
+      }))
       .filter(
         (o) =>
           o.courierId === courierId &&

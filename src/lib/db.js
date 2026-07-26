@@ -20,8 +20,14 @@ import { newKey } from './idempotency.js';
 export const config = adapter.config;
 export const backendName = adapter.name;
 
-/** Демо-доступи — є тільки в моковому адаптері, у продакшені null (B18). */
-export const demoCredentials = adapter.demoCredentials ?? null;
+/**
+ * Демо-доступи — є тільки в моковому адаптері, у продакшені null (B18).
+ *
+ * Саме прямий ре-експорт, а не `adapter.demoCredentials ?? null`: через
+ * простір імен esbuild не бачить константу й не може згорнути демо-гілку,
+ * тож розмітка кнопок входу лишалась у продакшн-бандлі мертвим кодом.
+ */
+export { demoCredentials } from '#adapter';
 
 function offline() {
   return typeof navigator !== 'undefined' && navigator.onLine === false;

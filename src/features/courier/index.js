@@ -36,7 +36,10 @@ export function title(tab) {
 export function subtitle(state, tab) {
   if (tab === 'queue') {
     const ready = state.queue.filter((o) => o.status === 'ready').length;
-    return ready ? `${ready} готових до забору` : 'Суші Мар · Олика';
+    if (ready) return `${ready} готових до забору`;
+    // Назва закладу — з даних, не з коду: другий заклад не має вимагати
+    // переписування UI (docs/01)
+    return state.queue[0]?.businessName || 'Немає замовлень';
   }
   if (tab === 'active') return state.active[0]?.code || '';
   return '';

@@ -1,6 +1,6 @@
 import { context } from 'esbuild';
 import { resolve } from 'node:path';
-import { publicEnvDefine, adapterPath } from './config.mjs';
+import { publicEnvDefine, buildAliases } from './config.mjs';
 
 const ctx = await context({
   entryPoints: { app: 'src/app/main.js' },
@@ -11,7 +11,7 @@ const ctx = await context({
   target: ['es2022', 'safari16'],
   outdir: 'dist',
   define: publicEnvDefine(),
-  alias: { '#adapter': resolve(adapterPath()) },
+  alias: buildAliases(resolve),
 });
 
 await ctx.watch();

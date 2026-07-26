@@ -11,7 +11,7 @@
 import { build } from 'esbuild';
 import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
-import { publicEnvDefine } from './config.mjs';
+import { publicEnvDefine, buildAliases } from './config.mjs';
 
 const OUT_DIR = 'dist-standalone';
 const TMP = join(OUT_DIR, '.tmp');
@@ -30,9 +30,10 @@ await build({
   minify: true,
   sourcemap: false,
   target: ['es2022', 'safari16'],
+  charset: 'utf8',
   outdir: TMP,
   define: publicEnvDefine(),
-  alias: { '#adapter': resolve('src/lib/adapters/mock.js') },
+  alias: buildAliases(resolve),
 });
 
 const js = await readFile(join(TMP, 'app.js'), 'utf8');

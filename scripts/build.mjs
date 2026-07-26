@@ -1,7 +1,7 @@
 import { build } from 'esbuild';
 import { cp, mkdir, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { publicEnvDefine, adapterPath, isProduction } from './config.mjs';
+import { publicEnvDefine, buildAliases, isProduction } from './config.mjs';
 
 const OUT = 'dist';
 
@@ -18,11 +18,16 @@ await build({
   sourcemap: !isProduction(),
   format: 'esm',
   target: ['es2022', 'safari16'],
+  // Без цього esbuild екранує кирилицю у \uXXXX. Це і роздуває бандл,
+  // і — головне — робить перевірки CI на вміст беззмістовними: пошук
+  // «Суші Мар» у бандлі не знаходив нічого НІКОЛИ, тож охоронна
+  // перевірка мовчки проходила, нічого не перевіряючи.
+  charset: 'utf8',
   outdir: OUT,
   define: publicEnvDefine(),
   // Підміна бекенду на збірці: dev → mock, production → supabase.
   // Саме тому демо-доступи фізично відсутні у продакшн-бандлі (B18).
-  alias: { '#adapter': resolve(adapterPath()) },
+  alias: buildAliases(resolve),
   logLevel: 'info',
 });
 
