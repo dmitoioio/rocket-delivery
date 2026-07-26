@@ -7,6 +7,7 @@
  */
 
 import { stepper, statusChip, esc, money, icons } from '../shared/ui.js';
+import * as demo from '#demo';
 
 /** @returns {{ok: boolean, missing: string}} */
 export function readiness(flow, order) {
@@ -45,6 +46,7 @@ export function sheet(state) {
 
       <div class="h-sec">Крок 2 · Код від клієнта</div>
       ${pinBlock(flow)}
+      ${demo.pinHint(flow.orderId)}
 
       ${isCash ? `<div class="h-sec">Крок 3 · Готівка</div>${cashBlock(order, flow)}` : ''}
 
@@ -95,6 +97,11 @@ function photoBlock(flow) {
  * Обхід коду існує обовʼязково: клієнт забуде, і без обходу кур'єр
  * застрягне під дверима з їжею. Обхід фіксується в журналі —
  * це не дірка, а керований виняток (B12).
+ */
+/**
+ * Курʼєр коду НЕ знає — його бачить лише клієнт на сторінці свого
+ * замовлення в cstllife. Сервер очікуваний код не віддає взагалі (B41),
+ * перевірка відбувається на боці сервера при завершенні доставки.
  */
 function pinBlock(flow) {
   if (flow.pinBypassed) {

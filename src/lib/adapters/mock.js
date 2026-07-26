@@ -258,6 +258,37 @@ function clone(v) {
   return JSON.parse(JSON.stringify(v));
 }
 
+/**
+ * 🔒 Прибирає з відповіді те, що клієнтський застосунок отримувати не має.
+ *
+ * `deliveryPin` — очікуваний код клієнта. Якщо він приїжджає курʼєру
+ * разом із замовленням, уся верифікація перетворюється на театр: код
+ * видно в інструментах розробника, і питати клієнта необовʼязково.
+ * Перевірка коду має жити ТІЛЬКИ на сервері (B41).
+ *
+ * @template T
+ * @param {T} order
+ * @returns {T}
+ */
+function publicOrder(order) {
+  if (!order) return order;
+  const { deliveryPin, ...safe } = order;
+  void deliveryPin;
+  return safe;
+}
+
+function publicOrders(orders) {
+  return orders.map(publicOrder);
+}
+
+/**
+ * Тільки для демо: підказка з кодом клієнта на екрані завершення.
+ * У продакшн-збірці цього адаптера не існує взагалі.
+ */
+export function demoPinFor(orderId) {
+  return db.orders.find((o) => o.id === orderId)?.deliveryPin || null;
+}
+
 function logEvent(orderId, from, to, actor) {
   db.events.push({
     id: `ev${db.events.length + 1}`,
@@ -367,11 +398,13 @@ export async function fetchQueue() {
 export async function fetchActive(courierId) {
   await lag();
   tickServer();
-  return clone(
-    db.orders.filter(
-      (o) =>
-        o.courierId === courierId &&
-        ['courier_assigned', 'picked_up', 'on_the_way'].includes(o.status)
+  return publicOrders(
+    clone(
+      db.orders.filter(
+        (o) =>
+          o.courierId === courierId &&
+          ['courier_assigned', 'picked_up', 'on_the_way'].includes(o.status)
+      )
     )
   );
 }
@@ -381,21 +414,26 @@ export async function fetchHistory(courierId) {
   const earnedFor = (orderId) =>
     db.earnings.filter((e) => e.orderId === orderId).reduce((s, e) => s + e.amount, 0);
 
-  return clone(
-    db.orders
-      .map((o) => ({
-        ...o,
-        courierEarnings: earnedFor(o.id),
-        businessName: db.business.name,
-      }))
-      .filter(
-        (o) =>
-          o.courierId === courierId &&
-          ['delivered', 'failed_delivery', 'cancelled_by_client', 'rejected_by_business'].includes(
-            o.status
-          )
-      )
-      .sort((a, b) => (b.deliveredAt || b.placedAt) - (a.deliveredAt || a.placedAt))
+  return publicOrders(
+    clone(
+      db.orders
+        .map((o) => ({
+          ...o,
+          courierEarnings: earnedFor(o.id),
+          businessName: db.business.name,
+        }))
+        .filter(
+          (o) =>
+            o.courierId === courierId &&
+            [
+              'delivered',
+              'failed_delivery',
+              'cancelled_by_client',
+              'rejected_by_business',
+            ].includes(o.status)
+        )
+        .sort((a, b) => (b.deliveredAt || b.placedAt) - (a.deliveredAt || a.placedAt))
+    )
   );
 }
 
@@ -455,7 +493,7 @@ export async function acceptOrder(orderId, courierId) {
   order.courierId = courierId;
   order.status = 'courier_assigned';
   order.courierAssignedAt = Date.now();
-  return clone(order);
+  return publicOrder(clone(order));
 }
 
 const FLOW = {
@@ -472,7 +510,7 @@ export async function advanceStatus(orderId, courierId, toStatus) {
   logEvent(order.id, order.status, toStatus, { role: 'courier', courierId });
   order.status = toStatus;
   order[`${toStatus === 'picked_up' ? 'pickedUp' : 'onTheWay'}At`] = Date.now();
-  return clone(order);
+  return publicOrder(clone(order));
 }
 
 /**
@@ -514,7 +552,7 @@ export async function completeDelivery(orderId, courierId, { photoPath, pin, pin
     createdAt: Date.now(),
   });
 
-  return clone(order);
+  return publicOrder(clone(order));
 }
 
 export async function cancelOrder(orderId, courierId, { reasonCode, note }) {
@@ -537,7 +575,7 @@ export async function cancelOrder(orderId, courierId, { reasonCode, note }) {
     // Скасування онлайн-оплаченого замовлення завжди вимагає рефанду
     if (order.paymentMethod === 'online') order.paymentStatus = 'refund_needed';
   }
-  return clone(order);
+  return publicOrder(clone(order));
 }
 
 export async function setCourierStatus(courierId, status) {
@@ -645,7 +683,7 @@ export async function fetchAdminOverview() {
   await lag();
   tickServer();
   const now = Date.now();
-  const orders = clone(db.orders);
+  const orders = publicOrders(clone(db.orders));
   return {
     business: clone(db.business),
     orders,

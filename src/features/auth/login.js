@@ -1,7 +1,7 @@
 /** Екран логіна. Самореєстрації немає — облікові записи створює адмін (ADR-0004). */
 
 import * as db from '../../lib/db.js';
-import * as demo from '#demo-login';
+import * as demo from '#demo';
 import { setState } from '../../lib/store.js';
 import { toast, haptic } from '../shared/toast.js';
 import { esc } from '../../lib/format.js';

@@ -52,17 +52,15 @@ export function adapterPath() {
  * імпортовану константу в умові, і перевірене вимірюванням — розмітка
  * лишалась у бандлі. Гарантія має бути структурною (B18).
  */
-export function demoLoginPath() {
-  return isProduction()
-    ? 'src/features/auth/demo-login.stub.js'
-    : 'src/features/auth/demo-login.js';
+export function demoPath() {
+  return isProduction() ? 'src/features/demo/demo.stub.js' : 'src/features/demo/demo.js';
 }
 
 /** Аліаси модулів, що підміняються на збірці. */
 export function buildAliases(resolve) {
   return {
     '#adapter': resolve(adapterPath()),
-    '#demo-login': resolve(demoLoginPath()),
+    '#demo': resolve(demoPath()),
   };
 }
 

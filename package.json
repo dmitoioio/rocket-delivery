@@ -9,7 +9,7 @@
   },
   "imports": {
     "#adapter": "./src/lib/adapters/mock.js",
-    "#demo-login": "./src/features/auth/demo-login.js"
+    "#demo": "./src/features/demo/demo.js"
   },
   "scripts": {
     "dev": "node scripts/dev.mjs",

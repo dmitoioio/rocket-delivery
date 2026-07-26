@@ -110,6 +110,42 @@ test('контакт закривається після доставки — в
   );
 });
 
+/* ── Код клієнта ────────────────────────────────────────────────────────── */
+
+test('очікуваний код клієнта НЕ віддається курʼєру в жодній відповіді (B41)', async () => {
+  await api.acceptOrder('o1', 'c1');
+
+  const [active] = await api.fetchActive('c1');
+  assert.equal(active.deliveryPin, undefined, 'fetchActive не має віддавати код');
+
+  const overview = await api.fetchAdminOverview();
+  for (const o of overview.orders) {
+    assert.equal(o.deliveryPin, undefined, 'адмін теж не має бачити код');
+  }
+
+  await api.advanceStatus('o1', 'c1', 'picked_up');
+  await api.advanceStatus('o1', 'c1', 'on_the_way');
+  const done = await api.completeDelivery('o1', 'c1', { photoPath: 'p.jpg', pin: '4271' });
+  assert.equal(done.deliveryPin, undefined, 'відповідь на завершення теж без коду');
+
+  const [past] = await api.fetchHistory('c1');
+  assert.equal(past.deliveryPin, undefined, 'історія теж без коду');
+});
+
+test('перевірка коду лишається робочою при тому, що код прихований', async () => {
+  await api.acceptOrder('o1', 'c1');
+  await api.advanceStatus('o1', 'c1', 'picked_up');
+  await api.advanceStatus('o1', 'c1', 'on_the_way');
+
+  await assert.rejects(
+    () => api.completeDelivery('o1', 'c1', { photoPath: 'p.jpg', pin: '1111' }),
+    (e) => e.kind === 'validation'
+  );
+
+  const ok = await api.completeDelivery('o1', 'c1', { photoPath: 'p.jpg', pin: '4271' });
+  assert.equal(ok.status, 'delivered');
+});
+
 /* ── Завершення доставки ────────────────────────────────────────────────── */
 
 async function bringToDoor(orderId = 'o1', courierId = 'c1') {

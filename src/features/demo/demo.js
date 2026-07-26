@@ -1,8 +1,9 @@
 /**
- * Вхід одним кліком — ТІЛЬКИ для демо-режиму.
+ * Усе, що існує ТІЛЬКИ в демо-режимі: вхід одним кліком і підказки,
+ * які в реальній системі знає лише клієнт.
  *
  * ⚠️ ЦЕЙ ФАЙЛ НЕ ПОТРАПЛЯЄ У ПРОДАКШН-ЗБІРКУ.
- * scripts/config.mjs підставляє замість нього demo-login.stub.js, коли
+ * scripts/config.mjs підставляє замість нього demo.stub.js, коли
  * VITE_APP_ENV=production — той самий механізм, що й для адаптера даних.
  *
  * Чому саме підміна модуля, а не перевірка `if (demoCredentials)`:
@@ -11,7 +12,7 @@
  * бути структурною, а не залежати від поведінки мініфікатора (B18).
  */
 
-import { demoCredentials } from '#adapter';
+import { demoCredentials, demoPinFor } from '#adapter';
 import { icons } from '../shared/icons.js';
 import { esc } from '../../lib/format.js';
 
@@ -49,6 +50,24 @@ export function wrapManualForm(formHtml) {
     <summary>Увійти логіном і паролем</summary>
     ${formHtml}
   </details>`;
+}
+
+/**
+ * Підказка з кодом клієнта.
+ *
+ * У реальній системі курʼєр цього коду НЕ знає й знати не може — його
+ * бачить лише клієнт на сторінці свого замовлення в cstllife. Тут підказка
+ * існує тільки тому, що клієнтської поверхні ще немає, і без неї демо
+ * неможливо пройти до кінця.
+ *
+ * @param {string} orderId
+ */
+export function pinHint(orderId) {
+  const pin = demoPinFor?.(orderId);
+  if (!pin) return '';
+  return `<div class="tiny" style="text-align:center;margin-top:8px">
+    Демо: клієнт назвав би <strong class="num">${esc(pin)}</strong>
+  </div>`;
 }
 
 /**
