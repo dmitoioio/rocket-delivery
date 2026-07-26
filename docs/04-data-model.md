@@ -154,7 +154,7 @@ CREATE INDEX ON orders (trip_id) WHERE trip_id IS NOT NULL;
 | `id` | `uuid` PK | |
 | `courier_id`, `order_id` | `uuid` FK | |
 | `amount` | `numeric(10,2)` | Ставка **на момент доставки**, не поточна з конфіга |
-| `reason` | `text` | `delivery` \| `failed_delivery_compensation` \| `bonus` \| `adjustment` |
+| `reason` | `text` | `delivery` \| `hourly` \| `failed_delivery_compensation` \| `bonus` \| `adjustment` |
 | `payroll_id` | `uuid` NULL | Заповнюється при виплаті |
 | `created_at` | `timestamptz` | |
 
@@ -184,6 +184,24 @@ CREATE INDEX ON orders (trip_id) WHERE trip_id IS NOT NULL;
 | `cancelled_by_id` | `uuid` |
 | `refund_needed` | `boolean` |
 | `created_at` | `timestamptz` |
+
+### `shifts` (заготовка під погодинну оплату)
+
+Створюється порожньою. Потрібна лише якщо власник обере погодинну модель (питання Q1, відкладене). Причина створити зараз — форма оплати змінює форму даних, а не тільки числа: додати облік робочого часу в живу базу зі зарплатними записами всередині значно дорожче, ніж завести порожню таблицю.
+
+| Поле | Тип |
+|---|---|
+| `id` | `uuid` PK |
+| `courier_id` | `uuid` FK |
+| `started_at`, `ended_at` | `timestamptz` |
+| `hours` | `numeric` GENERATED |
+| `note` | `text` |
+
+### Конфігурація ставок
+
+Ставки (вартість доставки, бонус курʼєру, комісія закладу, погодинна база) живуть у таблиці конфігурації з версіонуванням по даті, **не в коді**. Це і є механізм, який робить відкладене рішення по фінмоделі дешевим: затвердження цифр = один `INSERT`, не реліз і не міграція.
+
+Історичні значення не перезаписуються — `orders.delivery_fee` і `earnings_log.amount` уже зберігають суму на момент події.
 
 ### `trips` (заготовка під батчинг)
 
