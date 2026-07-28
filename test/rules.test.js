@@ -110,6 +110,151 @@ test('контакт закривається після доставки — в
   );
 });
 
+/* ── Правила, які раніше були лише на папері ────────────────────────────── */
+
+test('офлайн-курʼєр не може взяти замовлення', async () => {
+  await api.setCourierStatus('c1', 'offline');
+  await assert.rejects(
+    () => api.acceptOrder('o1', 'c1'),
+    (e) => e.kind === 'limit'
+  );
+
+  await api.setCourierStatus('c1', 'online');
+  const order = await api.acceptOrder('o1', 'c1');
+  assert.equal(order.status, 'courier_assigned');
+});
+
+test('відстань рахується з координат, а не береться з насіння', async () => {
+  const queue = await api.fetchQueue();
+  for (const row of queue) {
+    assert.ok(row.distanceKm > 0, 'відстань має бути додатною');
+  }
+  // Дідичі поруч із закладом, Романів — найдальший із доступних
+  const near = queue.find((o) => o.destLocality === 'с. Дідичі');
+  const far = queue.find((o) => o.destLocality === 'с. Романів');
+  assert.ok(far.distanceKm > near.distanceKm, 'дальше село має більшу відстань');
+});
+
+test('замовлення за межами радіуса не створюється (B10)', async () => {
+  await assert.rejects(
+    () => api.createOrder({ destination: 'м. Луцьк', itemsTotal: 300, paymentMethod: 'cash' }),
+    (e) => e.kind === 'validation' && /Задалеко/.test(e.message)
+  );
+});
+
+test('замовлення в межах радіуса створюється з обчисленою відстанню', async () => {
+  const order = await api.createOrder({
+    destination: 'с. Метельне',
+    itemsTotal: 300,
+    paymentMethod: 'cash',
+  });
+  assert.equal(order.status, 'placed');
+  assert.ok(order.distanceKm > 0 && order.distanceKm < 15);
+  assert.equal(order.deliveryPin, undefined, 'код клієнта не віддається навіть при створенні');
+});
+
+test('поза графіком роботи закладу замовлення не приймається (B34)', async () => {
+  const hour = new Date().getHours();
+  // Вікно, у яке поточна година гарантовано не потрапляє
+  api.setBusinessHours((hour + 2) % 24, (hour + 3) % 24);
+  await assert.rejects(
+    () => api.createOrder({ destination: 'с. Метельне', itemsTotal: 300, paymentMethod: 'cash' }),
+    (e) => e.kind === 'validation' && /зачинено/i.test(e.message)
+  );
+  api.setBusinessHours(0, 24);
+});
+
+test('курʼєр не бачить щойно повернене ним замовлення (B6)', async () => {
+  await api.acceptOrder('o1', 'c1');
+  await api.cancelOrder('o1', 'c1', { reasonCode: 'return_to_queue' });
+
+  await assert.rejects(
+    () => api.acceptOrder('o1', 'c1'),
+    (e) => e.kind === 'conflict'
+  );
+  // Інший курʼєр узяти може одразу
+  await api.setCourierStatus('c2', 'online');
+  const order = await api.acceptOrder('o1', 'c2');
+  assert.equal(order.courierId, 'c2');
+});
+
+/* ── Гроші сходяться ────────────────────────────────────────────────────── */
+
+async function deliver(orderId, courierId = 'c1') {
+  await api.acceptOrder(orderId, courierId);
+  await api.advanceStatus(orderId, courierId, 'picked_up');
+  await api.advanceStatus(orderId, courierId, 'on_the_way');
+  return api.completeDelivery(orderId, courierId, {
+    photoPath: 'p.jpg',
+    pin: api.demoPinFor(orderId),
+  });
+}
+
+test('здача готівки привʼязується до конкретних замовлень', async () => {
+  await deliver('o1');
+  const handoff = await api.declareCashHandoff('c1', 470);
+
+  assert.equal(handoff.orderIds.length, 1, 'покриває саме одне доставлене готівкове');
+  assert.equal(handoff.orderIds[0], 'o1');
+  assert.equal(handoff.expectedAmount, 470, 'очікувана сума рахується із замовлень');
+});
+
+test('повторна здача не захоплює вже звітовані замовлення', async () => {
+  await deliver('o1');
+  const first = await api.declareCashHandoff('c1', 470);
+  assert.equal(first.orderIds.length, 1);
+
+  const second = await api.declareCashHandoff('c1', 100);
+  assert.equal(second.orderIds.length, 0, 'ті самі замовлення вдруге не потрапляють');
+});
+
+test('розбіжність стає боргом, борг утримується з виплати', async () => {
+  await deliver('o1');
+  const handoff = await api.declareCashHandoff('c1', 470);
+  await api.confirmHandoff(handoff.id, 400);
+
+  const courier = await api.fetchCourier('c1');
+  assert.equal(courier.debt, 70, 'недостача зафіксована як борг');
+
+  const payroll = await api.createPayroll('c1');
+  assert.equal(payroll.deductions, 70, 'борг утримано з відомості');
+  assert.equal(payroll.netAmount, payroll.grossAmount - 70);
+
+  await api.payPayroll(payroll.id);
+  const after = await api.fetchCourier('c1');
+  assert.equal(after.debt || 0, 0, 'після виплати борг закритий');
+});
+
+test('нарахування потрапляє у відомість лише один раз', async () => {
+  await deliver('o1');
+  await api.createPayroll('c1');
+  await assert.rejects(
+    () => api.createPayroll('c1'),
+    (e) => e.kind === 'validation'
+  );
+});
+
+test('невдала доставка компенсується курʼєру — він відпрацював поїздку', async () => {
+  await api.acceptOrder('o1', 'c1');
+  await api.advanceStatus('o1', 'c1', 'picked_up');
+  await api.advanceStatus('o1', 'c1', 'on_the_way');
+  await api.cancelOrder('o1', 'c1', { reasonCode: 'client_unreachable' });
+
+  const overview = await api.fetchAdminOverview();
+  const comp = overview.earnings.find(
+    (e) => e.orderId === 'o1' && e.reason === 'failed_delivery_compensation'
+  );
+  assert.ok(comp, 'компенсація нарахована');
+  assert.ok(comp.amount > 0);
+});
+
+test('watchdog позначає замовлення, яке ніхто не взяв', async () => {
+  const overview = await api.fetchAdminOverview();
+  // o3 у насінні висить 22 хвилини без курʼєра
+  const stale = overview.orders.find((o) => o.id === 'o3');
+  assert.ok(stale.watchdog.includes('unclaimed'), 'позначено як невзяте');
+});
+
 /* ── Код клієнта ────────────────────────────────────────────────────────── */
 
 test('очікуваний код клієнта НЕ віддається курʼєру в жодній відповіді (B41)', async () => {

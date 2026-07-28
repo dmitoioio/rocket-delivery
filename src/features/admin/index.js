@@ -342,32 +342,85 @@ function economy(a) {
 /* ── Курʼєри ────────────────────────────────────────────────────────────── */
 
 function couriers(a) {
-  const earningsOf = (id) =>
-    a.earnings.filter((e) => e.courierId === id).reduce((s, e) => s + e.amount, 0);
-  const countOf = (id) => a.earnings.filter((e) => e.courierId === id).length;
+  // Нараховане, за що ще не виплачено: саме воно піде у відомість
+  const pendingOf = (id) =>
+    a.earnings.filter((e) => e.courierId === id && !e.payrollId).reduce((s, e) => s + e.amount, 0);
+  const countOf = (id) =>
+    a.earnings.filter((e) => e.courierId === id && e.reason === 'delivery').length;
 
-  return panel(
-    'Курʼєри та зарплата',
-    'Поточний тиждень',
-    `<div class="tbl-scroll"><table>
-      <thead><tr><th>Курʼєр</th><th>Логін</th><th>Доставок</th><th>Готівка</th><th>До виплати</th><th></th></tr></thead>
+  const table = `<div class="tbl-scroll"><table>
+      <thead><tr><th>Курʼєр</th><th>Доставок</th><th>Готівка</th><th>Борг</th><th>До виплати</th><th></th></tr></thead>
       <tbody>${a.couriers
-        .map(
-          (c) => `<tr>
+        .map((c) => {
+          const pending = pendingOf(c.id);
+          return `<tr>
         <td><div class="cell-name">${avatar(c.fullName, true)}${esc(c.fullName)}</div>
+          <div class="tiny num">${esc(c.login)}</div>
           ${c.isActive ? '' : '<div class="tiny">деактивований</div>'}</td>
-        <td class="num mut">${esc(c.login)}</td>
         <td class="num">${esc(countOf(c.id))}</td>
         <td class="num">${esc(money(c.cashOnHand))}</td>
-        <td class="num" style="font-weight:650">${esc(money(earningsOf(c.id)))}</td>
-        <td><button class="btn btn-ghost btn-sm" data-action="toggle-courier"
-              data-id="${esc(c.id)}" data-active="${c.isActive}">
-              ${c.isActive ? 'Деактивувати' : 'Активувати'}</button></td>
-      </tr>`
-        )
+        <td class="num" style="color:${c.debt ? 'var(--s-bad)' : 'var(--ink-3)'};font-weight:${c.debt ? 650 : 400}">
+          ${esc(money(c.debt || 0))}</td>
+        <td class="num" style="font-weight:650">${esc(money(pending))}</td>
+        <td>
+          ${
+            pending
+              ? `<button class="btn btn-dark btn-sm" data-action="create-payroll" data-id="${esc(c.id)}">
+                   Сформувати</button>`
+              : '<span class="mut tiny">немає нарахувань</span>'
+          }
+          <button class="btn btn-ghost btn-sm" data-action="toggle-courier"
+              data-id="${esc(c.id)}" data-active="${c.isActive}" style="margin-left:6px">
+              ${c.isActive ? 'Деактивувати' : 'Активувати'}</button>
+        </td>
+      </tr>`;
+        })
         .join('')}</tbody>
-    </table></div>`,
-    `<button class="btn btn-dark btn-sm" data-action="open-create-courier">Створити курʼєра</button>`
+    </table></div>`;
+
+  const payrolls = a.payrolls?.length
+    ? panel(
+        'Відомості',
+        `${a.payrolls.length} за весь час`,
+        `<div class="tbl-scroll"><table>
+        <thead><tr><th>Курʼєр</th><th>Доставок</th><th>Нараховано</th><th>Утримано</th><th>До виплати</th><th></th></tr></thead>
+        <tbody>${[...a.payrolls]
+          .reverse()
+          .map((p) => {
+            const c = a.couriers.find((x) => x.id === p.courierId);
+            return `<tr>
+            <td>${esc(c?.fullName || p.courierId)}</td>
+            <td class="num">${esc(p.deliveriesCount)}</td>
+            <td class="num">${esc(money(p.grossAmount))}</td>
+            <td class="num" style="color:${p.deductions ? 'var(--s-bad)' : 'inherit'}">
+              ${esc(money(p.deductions))}</td>
+            <td class="num" style="font-weight:650">${esc(money(p.netAmount))}</td>
+            <td>${
+              p.status === 'paid'
+                ? statusChip('delivered', 'виплачено')
+                : `<button class="btn btn-dark btn-sm" data-action="pay-payroll" data-id="${esc(p.id)}">
+                     Виплатити</button>`
+            }</td>
+          </tr>`;
+          })
+          .join('')}</tbody>
+      </table></div>`
+      )
+    : '';
+
+  return (
+    panel(
+      'Курʼєри та зарплата',
+      'Нараховане, борг по готівці й виплати',
+      table,
+      `<button class="btn btn-dark btn-sm" data-action="open-create-courier">Створити курʼєра</button>`
+    ) +
+    payrolls +
+    `<div class="callout callout--info">
+      Борг — це зафіксована розбіжність при здачі готівки. Він утримується
+      з найближчої відомості автоматично, а курʼєр бачить його у профілі
+      ще до дня виплати.
+    </div>`
   );
 }
 
@@ -578,6 +631,26 @@ export async function handle(action, el) {
       }
       return true;
     }
+
+    case 'create-payroll':
+      try {
+        const p = await db.createPayroll(el.dataset.id);
+        toast(`Відомість на ${p.netAmount} ₴ сформована`, 'ok', 3200);
+        await load();
+      } catch (error) {
+        toast(error.message, 'danger');
+      }
+      return true;
+
+    case 'pay-payroll':
+      try {
+        await db.payPayroll(el.dataset.id);
+        toast('Виплачено', 'ok');
+        await load();
+      } catch (error) {
+        toast(error.message, 'danger');
+      }
+      return true;
 
     case 'open-order':
       setState({ sheet: { type: 'order', orderId: el.dataset.id } });

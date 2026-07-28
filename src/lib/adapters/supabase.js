@@ -110,6 +110,15 @@ export async function createCourier() {
 export async function setCourierActive() {
   return TODO('setCourierActive');
 }
+export async function createPayroll() {
+  return TODO('createPayroll');
+}
+export async function payPayroll() {
+  return TODO('payPayroll');
+}
+export async function createOrder() {
+  return TODO('createOrder');
+}
 
 export const config = {
   deliveryFee: 50,

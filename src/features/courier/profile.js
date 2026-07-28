@@ -50,6 +50,16 @@ export function render(state) {
       ${esc(deliveries(c.weekCount))} цього тижня · виплата в пʼятницю
     </div>
 
+    ${
+      c.debt
+        ? `<div class="callout callout--warn" style="margin-top:16px">
+             <strong>Борг ${esc(money(c.debt))}</strong> — розбіжність при здачі готівки.
+             Утримається з найближчої виплати. Видно тобі зараз, а не в день
+             виплати: сюрпризів у зарплаті бути не має.
+           </div>`
+        : ''
+    }
+
     <div class="h-sec">Готівка на руках</div>
     <div class="card ${pct >= 100 ? 'card--hot' : ''}">
       <div class="row">

@@ -181,6 +181,23 @@ export function confirmHandoff(handoffId, amount) {
   return read('confirmHandoff', () => adapter.confirmHandoff(handoffId, amount));
 }
 
+/** Формування відомості за період: нараховане мінус борг по готівці. */
+export function createPayroll(courierId) {
+  return read('createPayroll', () => adapter.createPayroll(courierId));
+}
+
+export function payPayroll(payrollId) {
+  return read('payPayroll', () => adapter.payPayroll(payrollId));
+}
+
+/**
+ * Створення замовлення. У продакшені це робить чекаут на cstllife —
+ * тут функція існує, бо демо симулює й ту поверхню теж.
+ */
+export function createOrder(payload) {
+  return read('createOrder', () => adapter.createOrder(payload));
+}
+
 export function createCourier(data) {
   return read('createCourier', () => adapter.createCourier(data));
 }

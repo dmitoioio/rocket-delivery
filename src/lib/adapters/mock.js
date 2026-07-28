@@ -11,6 +11,7 @@
  */
 
 import { err } from '../errors.js';
+import { distanceM } from '../geo.js';
 
 /* ── Демо-доступи (тільки dev) ──────────────────────────────────────────── */
 
@@ -78,6 +79,16 @@ const BUSINESS = {
   isActive: true,
   deliveryRadiusKm: 15,
   cashReconciliationPeriod: 'weekly',
+  /**
+   * Графік роботи: без нього замовлення падають о 23:00 у заклад,
+   * що працює до 22:00 (B34).
+   *
+   * У демо за замовчуванням цілодобово — інакше застосунок ставав би
+   * непридатним уночі, а тести залежали б від годинника машини.
+   * Реальний графік вмикається з демо-консолі, щоб правило було видно
+   * в дії, а не лише в коді.
+   */
+  workingHours: { from: 0, to: 24 },
 };
 
 const min = (n) => n * 60000;
@@ -202,7 +213,10 @@ function reset() {
         fullName: 'Олег Ткачук',
         phone: '+380670001122',
         vehicle: 'escooter',
-        status: 'offline',
+        // На лінії з самого початку: інакше перше, що бачить той, хто
+        // відкрив демо, — відмова «вийди на лінію». Правило перевіряється
+        // тестом, а не незручністю на старті.
+        status: 'online',
         login: 'rd-oleh-07',
         maxActiveOrders: config.maxActiveOrders,
         cashOnHand: 1250,
@@ -246,13 +260,78 @@ function reset() {
     ],
     events: [],
     photos: [],
+    payrolls: [],
+    locations: {},
+    demo: { generator: false, autoKitchen: true, intervalSec: 90, lastSpawn: Date.now() },
   };
+
+  // Відстань — обчислювана величина, а не насіннєва константа.
+  // Одне джерело правди: координати.
+  for (const o of db.orders) o.distanceKm = distanceKmFor(o) ?? o.distanceKm;
+}
+
+/* ── Збереження демо-стану ──────────────────────────────────────────────── */
+
+const STORAGE_KEY = 'rocket-demo-v1';
+
+/**
+ * Демо переживає перезавантаження сторінки.
+ *
+ * Без цього кожне оновлення стирало все: доставлені замовлення, здану
+ * готівку, створених курʼєрів. Перевірити наскрізний сценарій було
+ * неможливо — а саме він і є сенсом демо.
+ */
+function persist() {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+  } catch {
+    /* сховище переповнене або вимкнене — демо працює далі в памʼяті */
+  }
+}
+
+function restore() {
+  if (typeof localStorage === 'undefined') return false;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const saved = JSON.parse(raw);
+    // Мінімальна перевірка форми: пошкоджене сховище не має ламати демо
+    if (!saved?.orders || !saved?.couriers) return false;
+    db = saved;
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 reset();
+restore();
+
+/** Скинути демо до насіннєвого стану. */
+export function resetDemo() {
+  reset();
+  persist();
+}
 
 /** Штучна затримка мережі, щоб стани завантаження були видимі в розробці. */
 const lag = (ms = 180) => new Promise((r) => setTimeout(r, ms));
+
+/* ── Геометрія ──────────────────────────────────────────────────────────── */
+
+/**
+ * Відстань від закладу до клієнта в кілометрах.
+ *
+ * Рахується з координат, а не береться з насіння: інакше «12,6 км» —
+ * це вигадане число, яке нічого не перевіряє, а радіус доставки (B10)
+ * не має на чому спрацювати.
+ */
+function distanceKmFor(order) {
+  if (!Number.isFinite(order.destLat) || !Number.isFinite(order.destLng)) return null;
+  const from = { lat: db.business.lat, lng: db.business.lng };
+  const to = { lat: order.destLat, lng: order.destLng };
+  return Math.round((distanceM(from, to) / 1000) * 10) / 10;
+}
 
 function clone(v) {
   return JSON.parse(JSON.stringify(v));
@@ -308,12 +387,21 @@ function logEvent(orderId, from, to, actor) {
  */
 function tickServer() {
   const now = Date.now();
+
   for (const o of db.orders) {
-    if (o.status === 'preparing' && o.estimatedReadyAt && now >= o.estimatedReadyAt) {
+    // «Готово» тисне людина на кухні (поверхня закладу). Автопілот існує
+    // лише для демо: коли не хочеться грати кухаря, щоб побачити чергу.
+    if (
+      db.demo?.autoKitchen &&
+      o.status === 'preparing' &&
+      o.estimatedReadyAt &&
+      now >= o.estimatedReadyAt
+    ) {
       logEvent(o.id, 'preparing', 'ready', null);
       o.status = 'ready';
       o.readyAt = now;
     }
+
     if (o.status === 'ready' && o.readyAt) {
       const waited = (now - o.readyAt) / 60000;
       let bonus = 0;
@@ -322,7 +410,233 @@ function tickServer() {
       }
       o.waitingBonus = bonus;
     }
+
+    applyWatchdog(o, now);
   }
+
+  maybeSpawnOrder(now);
+  persist();
+}
+
+/**
+ * Watchdog — те, чого в системі не було зовсім (B7).
+ *
+ * Замовлення могло висіти в будь-якому статусі вічно, і ніхто не дізнався б.
+ * Позначаємо прапорцем, а не окремим статусом: доставлене із запізненням
+ * лишається `delivered`, але має бути видно, що воно прострочене.
+ */
+function applyWatchdog(o, now) {
+  const flags = [];
+
+  if (o.status === 'ready' && !o.courierId && o.readyAt && now - o.readyAt > min(15)) {
+    flags.push('unclaimed');
+  }
+  if (o.status === 'on_the_way' && o.onTheWayAt && now - o.onTheWayAt > min(60)) {
+    flags.push('stuck');
+  }
+  if (o.deliveredAt && o.estimatedReadyAt && o.deliveredAt - o.estimatedReadyAt > min(45)) {
+    flags.push('late');
+  }
+  if ((o.returnCount || 0) >= 2 && !['delivered', 'failed_delivery'].includes(o.status)) {
+    flags.push('bounced');
+  }
+
+  o.watchdog = flags;
+  o.isOverdue = flags.includes('late');
+}
+
+/* ── Створення замовлення ───────────────────────────────────────────────── */
+
+/** Населені пункти в радіусі пілоту + одне свідомо задалеке, щоб було видно відмову. */
+export const DEMO_DESTINATIONS = [
+  {
+    locality: 'с. Дідичі',
+    address: 'вул. Шкільна 4',
+    lat: 50.7482,
+    lng: 25.8091,
+    landmark: 'біля школи, синій паркан',
+  },
+  {
+    locality: 'с. Метельне',
+    address: 'вул. О. Денисюка 71',
+    lat: 50.69161,
+    lng: 25.81878,
+    landmark: 'зелені ворота, за магазином',
+  },
+  {
+    locality: 'с. Романів',
+    address: 'вул. Лісова 12',
+    lat: 50.6612,
+    lng: 25.9014,
+    landmark: 'останній двір, велика липа',
+  },
+  {
+    locality: 'м. Олика',
+    address: 'вул. Замкова 8',
+    lat: 50.7211,
+    lng: 25.8102,
+    landmark: 'навпроти аптеки',
+  },
+  {
+    locality: 'с. Покащів',
+    address: 'вул. Польова 3',
+    lat: 50.7803,
+    lng: 25.7412,
+    landmark: 'жовта хата з криницею',
+  },
+  {
+    locality: 'м. Луцьк',
+    address: 'просп. Волі 40',
+    lat: 50.7472,
+    lng: 25.3254,
+    landmark: 'за межами радіуса',
+  },
+];
+
+const FIRST_NAMES = ['Оксана', 'Андрій', 'Марія', 'Ігор', 'Ніна', 'Тарас', 'Леся', 'Богдан'];
+
+function nextOrderCode() {
+  const n = 415 + db.orders.length;
+  return `RD-${String(n).padStart(4, '0')}`;
+}
+
+function newPin() {
+  return String(Math.floor(1000 + Math.random() * 9000));
+}
+
+/**
+ * Створення замовлення. У продакшені це робить чекаут на cstllife.
+ *
+ * Тут же живе hard limit радіусу (B10): без нього система колись прийме
+ * замовлення за 40 км, і курʼєр на скутері туди просто не доїде.
+ */
+export async function createOrder({ destination, itemsTotal, paymentMethod, clientName }) {
+  await lag(200);
+
+  const dest = DEMO_DESTINATIONS.find((d) => d.locality === destination) || DEMO_DESTINATIONS[1];
+  const km =
+    Math.round((distanceM({ lat: db.business.lat, lng: db.business.lng }, dest) / 1000) * 10) / 10;
+
+  if (km > config.maxDeliveryRadiusKm) {
+    throw err.validation(
+      `Задалеко: ${km} км від закладу за ліміту ${config.maxDeliveryRadiusKm} км`
+    );
+  }
+
+  const hours = db.business.workingHours;
+  if (hours && !isOpenNow(hours)) {
+    throw err.validation(`Заклад зачинено. Працює ${hours.from}:00–${hours.to}:00`);
+  }
+
+  const now = Date.now();
+  const order = {
+    id: `o${db.orders.length + 1}-${now.toString(36)}`,
+    code: nextOrderCode(),
+    businessId: db.business.id,
+    courierId: null,
+    tripId: null,
+    status: 'placed',
+    itemsTotal,
+    deliveryFee: config.deliveryFee,
+    total: itemsTotal + config.deliveryFee,
+    paymentMethod,
+    paymentStatus: paymentMethod === 'online' ? 'paid' : 'pending',
+    clientName: clientName || FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)],
+    clientPhone: `+3806${Math.floor(10000000 + Math.random() * 89999999)}`,
+    destLocality: dest.locality,
+    destAddressText: `${dest.locality}, ${dest.address}`,
+    destLat: dest.lat,
+    destLng: dest.lng,
+    destLandmark: dest.landmark,
+    deliveryPin: newPin(),
+    distanceKm: km,
+    waitingBonus: 0,
+    returnCount: 0,
+    proofPhotoPath: null,
+    pinBypassed: false,
+    cancelReason: null,
+    cashHandoffId: null,
+    watchdog: [],
+    placedAt: now,
+    estimatedReadyAt: null,
+    readyAt: null,
+  };
+
+  db.orders.push(order);
+  logEvent(order.id, null, 'placed', { role: 'client' });
+  persist();
+  return publicOrder(clone(order));
+}
+
+/** Графік роботи закладу: замовлення о 23:00 у заклад до 22:00 (B34). */
+function isOpenNow(hours, now = new Date()) {
+  if (!hours) return true;
+  const h = now.getHours();
+  return h >= hours.from && h < hours.to;
+}
+
+/** Змінити графік закладу — з демо-консолі або з тесту. */
+export function setBusinessHours(from, to) {
+  db.business.workingHours = from === 0 && to === 24 ? { from: 0, to: 24 } : { from, to };
+  persist();
+  return clone(db.business.workingHours);
+}
+
+/** Генератор замовлень — щоб черга не вичерпувалась і демо було живим. */
+function maybeSpawnOrder(now) {
+  const d = db.demo;
+  if (!d?.generator) return;
+  if (now - (d.lastSpawn || 0) < (d.intervalSec || 90) * 1000) return;
+
+  d.lastSpawn = now;
+  // Генератор не створює свідомо задалеких замовлень — вони б лише
+  // засмічували чергу відмовами
+  const reachable = DEMO_DESTINATIONS.filter(
+    (dst) =>
+      distanceM({ lat: db.business.lat, lng: db.business.lng }, dst) / 1000 <=
+      config.maxDeliveryRadiusKm
+  );
+  const dest = reachable[Math.floor(Math.random() * reachable.length)];
+  const itemsTotal = 180 + Math.floor(Math.random() * 12) * 40;
+
+  const order = {
+    id: `g${now.toString(36)}`,
+    code: nextOrderCode(),
+    businessId: db.business.id,
+    courierId: null,
+    tripId: null,
+    status: 'placed',
+    itemsTotal,
+    deliveryFee: config.deliveryFee,
+    total: itemsTotal + config.deliveryFee,
+    paymentMethod: Math.random() < 0.5 ? 'cash' : 'online',
+    paymentStatus: 'pending',
+    clientName: FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)],
+    clientPhone: `+3806${Math.floor(10000000 + Math.random() * 89999999)}`,
+    destLocality: dest.locality,
+    destAddressText: `${dest.locality}, ${dest.address}`,
+    destLat: dest.lat,
+    destLng: dest.lng,
+    destLandmark: dest.landmark,
+    deliveryPin: newPin(),
+    distanceKm:
+      Math.round((distanceM({ lat: db.business.lat, lng: db.business.lng }, dest) / 1000) * 10) /
+      10,
+    waitingBonus: 0,
+    returnCount: 0,
+    proofPhotoPath: null,
+    pinBypassed: false,
+    cancelReason: null,
+    cashHandoffId: null,
+    watchdog: [],
+    placedAt: now,
+    estimatedReadyAt: null,
+    readyAt: null,
+  };
+  if (order.paymentMethod === 'online') order.paymentStatus = 'paid';
+
+  db.orders.push(order);
+  logEvent(order.id, null, 'placed', { role: 'client' });
 }
 
 function courierById(id) {
@@ -467,11 +781,23 @@ export async function acceptOrder(orderId, courierId) {
   const courier = courierById(courierId);
   if (!courier) throw err.auth();
 
+  // Офлайн-курʼєр не бере замовлень. Раніше це було лише написом
+  // у профілі — сервер пускав будь-кого.
+  if (courier.status !== 'online') {
+    throw err.limit('Вийди на лінію, щоб брати замовлення');
+  }
+
   const order = db.orders.find((o) => o.id === orderId);
   if (!order) throw err.conflict();
 
   // Умовний UPDATE: обидві перевірки — атомарно на сервері
   if (order.status !== 'ready' || order.courierId) throw err.conflict();
+
+  // Курʼєр, який щойно повернув це замовлення, не бачить його 3 хвилини —
+  // інакше воно ходить по колу «взяв → повернув» (B6)
+  if (order.returnedBy === courierId && Date.now() - (order.returnedAt || 0) < min(3)) {
+    throw err.conflict('Ти щойно повернув це замовлення');
+  }
 
   const activeCount = db.orders.filter(
     (o) =>
@@ -493,6 +819,7 @@ export async function acceptOrder(orderId, courierId) {
   order.courierId = courierId;
   order.status = 'courier_assigned';
   order.courierAssignedAt = Date.now();
+  persist();
   return publicOrder(clone(order));
 }
 
@@ -510,6 +837,7 @@ export async function advanceStatus(orderId, courierId, toStatus) {
   logEvent(order.id, order.status, toStatus, { role: 'courier', courierId });
   order.status = toStatus;
   order[`${toStatus === 'picked_up' ? 'pickedUp' : 'onTheWay'}At`] = Date.now();
+  persist();
   return publicOrder(clone(order));
 }
 
@@ -552,6 +880,7 @@ export async function completeDelivery(orderId, courierId, { photoPath, pin, pin
     createdAt: Date.now(),
   });
 
+  persist();
   return publicOrder(clone(order));
 }
 
@@ -565,6 +894,8 @@ export async function cancelOrder(orderId, courierId, { reasonCode, note }) {
 
   if (toStatus === 'returned_to_queue') {
     order.returnCount += 1;
+    order.returnedBy = courierId;
+    order.returnedAt = Date.now();
     order.courierId = null;
     order.status = 'ready';
     order.courierAssignedAt = null;
@@ -574,7 +905,19 @@ export async function cancelOrder(orderId, courierId, { reasonCode, note }) {
     order.cancelReason = { reasonCode, note };
     // Скасування онлайн-оплаченого замовлення завжди вимагає рефанду
     if (order.paymentMethod === 'online') order.paymentStatus = 'refund_needed';
+
+    // Курʼєр відпрацював поїздку — заробіток за неї зберігається
+    // (рекомендація Q4). Інакше курʼєри уникали б «підозрілих» адрес.
+    db.earnings.push({
+      id: `e${db.earnings.length + 1}-${Date.now().toString(36)}`,
+      courierId,
+      orderId: order.id,
+      amount: config.courierPerDelivery,
+      reason: 'failed_delivery_compensation',
+      createdAt: Date.now(),
+    });
   }
+  persist();
   return publicOrder(clone(order));
 }
 
@@ -583,7 +926,19 @@ export async function setCourierStatus(courierId, status) {
   const c = courierById(courierId);
   if (!c) throw err.auth();
   c.status = status;
+  persist();
   return clone(c);
+}
+
+/** Готівкові замовлення, за які курʼєр ще не звітував. */
+function unsettledCashOrders(courierId) {
+  return db.orders.filter(
+    (o) =>
+      o.courierId === courierId &&
+      o.status === 'delivered' &&
+      o.paymentMethod === 'cash' &&
+      !o.cashHandoffId
+  );
 }
 
 export async function declareCashHandoff(courierId, amount) {
@@ -592,19 +947,28 @@ export async function declareCashHandoff(courierId, amount) {
   if (!c) throw err.auth();
   if (amount <= 0) throw err.validation('Вкажи суму');
 
+  // Здача привʼязується до КОНКРЕТНИХ замовлень. Без цього список
+  // «з чого складається» був вигаданим і повторювався після кожної здачі,
+  // а зʼясувати, на якому замовленні розійшлось, було неможливо.
+  const covered = unsettledCashOrders(courierId);
+
   const handoff = {
-    id: `h${db.cashHandoffs.length + 1}`,
+    id: `h${db.cashHandoffs.length + 1}-${Date.now().toString(36)}`,
     courierId,
-    businessId: 'b1',
+    businessId: db.business.id,
     declaredAmount: amount,
+    expectedAmount: covered.reduce((s, o) => s + o.total, 0),
     confirmedAmount: null,
     status: 'declared',
-    orderIds: [],
+    orderIds: covered.map((o) => o.id),
     declaredAt: Date.now(),
   };
   db.cashHandoffs.push(handoff);
+  for (const o of covered) o.cashHandoffId = handoff.id;
+
   // cashOnHand зменшується ТІЛЬКИ при підтвердженні закладом (ADR-0008),
   // інакше курʼєр знімав би собі ліміт власною заявою.
+  persist();
   return clone(handoff);
 }
 
@@ -692,6 +1056,9 @@ export async function fetchAdminOverview() {
     earnings: clone(db.earnings),
     events: clone(db.events),
     photos: clone(db.photos),
+    payrolls: clone(db.payrolls || []),
+    locations: clone(db.locations || {}),
+    demo: clone(db.demo || {}),
     stats: buildStats(orders, now),
   };
 }
@@ -700,13 +1067,76 @@ export async function confirmHandoff(handoffId, confirmedAmount) {
   await lag(220);
   const h = db.cashHandoffs.find((x) => x.id === handoffId);
   if (!h) throw err.conflict();
+  if (h.status !== 'declared') throw err.conflict('Цю здачу вже опрацьовано');
+
   h.confirmedAmount = confirmedAmount;
   h.confirmedAt = Date.now();
-  h.status = confirmedAmount === h.declaredAmount ? 'confirmed' : 'disputed';
+  h.discrepancy = confirmedAmount - h.declaredAmount;
+  h.status = h.discrepancy === 0 ? 'confirmed' : 'disputed';
 
   const c = courierById(h.courierId);
-  if (c) c.cashOnHand = Math.max(0, c.cashOnHand - confirmedAmount);
+  if (c) {
+    c.cashOnHand = Math.max(0, c.cashOnHand - confirmedAmount);
+    // Розбіжність — це зафіксований борг, а не усна суперечка (ADR-0008).
+    // Він утримається з наступної виплати.
+    if (h.discrepancy < 0) c.debt = (c.debt || 0) + Math.abs(h.discrepancy);
+  }
+  persist();
   return clone(h);
+}
+
+/* ── Зарплата ───────────────────────────────────────────────────────────── */
+
+/**
+ * Відомість за період: нараховане мінус борг по готівці.
+ *
+ * Раніше earnings_log просто ріс, а виплатити його не було як — тобто
+ * половина фінансового циклу не існувала.
+ */
+export async function createPayroll(courierId) {
+  await lag(240);
+  const c = courierById(courierId);
+  if (!c) throw err.conflict();
+
+  const pending = db.earnings.filter((e) => e.courierId === courierId && !e.payrollId);
+  if (!pending.length) throw err.validation('Немає нарахувань за період');
+
+  const gross = pending.reduce((s, e) => s + e.amount, 0);
+  const deductions = Math.min(c.debt || 0, gross);
+
+  const payroll = {
+    id: `p${db.payrolls.length + 1}-${Date.now().toString(36)}`,
+    courierId,
+    periodStart: Math.min(...pending.map((e) => e.createdAt)),
+    periodEnd: Date.now(),
+    deliveriesCount: pending.filter((e) => e.reason === 'delivery').length,
+    grossAmount: gross,
+    deductions,
+    netAmount: gross - deductions,
+    status: 'draft',
+    createdAt: Date.now(),
+  };
+
+  db.payrolls.push(payroll);
+  for (const e of pending) e.payrollId = payroll.id;
+  persist();
+  return clone(payroll);
+}
+
+export async function payPayroll(payrollId) {
+  await lag(240);
+  const p = db.payrolls.find((x) => x.id === payrollId);
+  if (!p) throw err.conflict();
+  if (p.status === 'paid') throw err.conflict('Уже виплачено');
+
+  p.status = 'paid';
+  p.paidAt = Date.now();
+
+  const c = courierById(p.courierId);
+  if (c) c.debt = Math.max(0, (c.debt || 0) - p.deductions);
+
+  persist();
+  return clone(p);
 }
 
 export async function createCourier({ fullName, phone }) {
@@ -739,6 +1169,7 @@ export async function createCourier({ fullName, phone }) {
     isActive: true,
   });
 
+  persist();
   return { login, password };
 }
 
@@ -748,6 +1179,7 @@ export async function setCourierActive(courierId, isActive) {
   if (!c) throw err.conflict();
   c.isActive = isActive;
   if (!isActive) c.status = 'offline';
+  persist();
   return clone(c);
 }
 
