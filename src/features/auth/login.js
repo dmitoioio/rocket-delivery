@@ -38,7 +38,10 @@ function loginForm() {
 /* ── Поведінка ──────────────────────────────────────────────────────────── */
 
 export function mount(root) {
-  demo.attach(root, enter);
+  demo.attach(root, {
+    credentials: enter,
+    role: (role, route) => setState({ session: { role, login: role }, route }),
+  });
 
   const form = root.querySelector('#login-form');
   form?.addEventListener('submit', (e) => {

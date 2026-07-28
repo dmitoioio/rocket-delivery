@@ -85,11 +85,29 @@ jobs:
           done
           echo "OK"
 
-      # Кнопки входу одним кліком — теж частина демо-режиму
+      # Поверхні клієнта й закладу — симуляція cstllife (ADR-0001).
+      # У продакшн-збірці Rocket Delivery їх не має існувати навіть
+      # мертвим кодом: demo.stub.js віддає порожній реєстр surfaces,
+      # тож business.js і client.js не імпортуються взагалі.
+      - name: Поверхонь cstllife у продакшн-бандлі немає
+        run: |
+          for marker in "симуляція cstllife" "Симуляція cstllife" "Філадельфія" \
+                        "Готово до забору" "Код для курʼєра" "Куди везти"; do
+            if grep -rIl "$marker" dist/ 2>/dev/null; then
+              echo "::error::У продакшн-бандлі знайдено демо-поверхню cstllife: $marker"
+              exit 1
+            fi
+          done
+          echo "OK"
+
+      # Кнопки входу одним кліком — теж частина демо-режиму.
+      # data-demo — курʼєр і адмін, data-role — клієнт і заклад.
       - name: Демо-входу в продакшн-бандлі немає
         run: |
-          if grep -rIl 'data-demo' dist/ 2>/dev/null; then
-            echo "::error::У продакшн-бандлі знайдено демо-вхід одним кліком"
-            exit 1
-          fi
+          for marker in 'data-demo' 'data-role' 'reset-demo'; do
+            if grep -rIl "$marker" dist/ 2>/dev/null; then
+              echo "::error::У продакшн-бандлі знайдено демо-вхід одним кліком: $marker"
+              exit 1
+            fi
+          done
           echo "OK"

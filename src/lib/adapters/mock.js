@@ -510,7 +510,13 @@ function newPin() {
  * Тут же живе hard limit радіусу (B10): без нього система колись прийме
  * замовлення за 40 км, і курʼєр на скутері туди просто не доїде.
  */
-export async function createOrder({ destination, itemsTotal, paymentMethod, clientName }) {
+export async function createOrder({
+  destination,
+  itemsTotal,
+  paymentMethod,
+  clientName,
+  clientKey,
+}) {
   await lag(200);
 
   const dest = DEMO_DESTINATIONS.find((d) => d.locality === destination) || DEMO_DESTINATIONS[1];
@@ -543,6 +549,7 @@ export async function createOrder({ destination, itemsTotal, paymentMethod, clie
     paymentStatus: paymentMethod === 'online' ? 'paid' : 'pending',
     clientName: clientName || FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)],
     clientPhone: `+3806${Math.floor(10000000 + Math.random() * 89999999)}`,
+    clientKey: clientKey || null,
     destLocality: dest.locality,
     destAddressText: `${dest.locality}, ${dest.address}`,
     destLat: dest.lat,
@@ -637,6 +644,81 @@ function maybeSpawnOrder(now) {
 
   db.orders.push(order);
   logEvent(order.id, null, 'placed', { role: 'client' });
+}
+
+/* ── Операції закладу ───────────────────────────────────────────────────── */
+/* У продакшені їх виконує кабінет закладу на cstllife. Статус-машина
+   до `ready` належить закладу, і саме тому замовлення НЕ падає курʼєру
+   одразу після оплати. */
+
+function orderById(id) {
+  const o = db.orders.find((x) => x.id === id);
+  if (!o) throw err.conflict();
+  return o;
+}
+
+/** Заклад підтверджує замовлення й САМ ставить час готовності. */
+export async function businessAcceptOrder(orderId, minutes) {
+  await lag(200);
+  const o = orderById(orderId);
+  if (o.status !== 'placed') throw err.conflict('Замовлення вже опрацьоване');
+
+  logEvent(o.id, o.status, 'preparing', { role: 'business' });
+  o.status = 'preparing';
+  o.acceptedByBusinessAt = Date.now();
+  // Прогноз, а не факт: два різні поля, і це не дрібниця (B8)
+  o.estimatedReadyAt = Date.now() + min(minutes || 20);
+  persist();
+  return publicOrder(clone(o));
+}
+
+/**
+ * Факт готовності. ТІЛЬКИ тепер замовлення падає в чергу курʼєрів —
+ * у прототипі воно падало одразу після оплати, і курʼєр приїздив
+ * до порожньої кухні.
+ */
+export async function businessMarkReady(orderId) {
+  await lag(200);
+  const o = orderById(orderId);
+  if (!['preparing', 'accepted_by_business'].includes(o.status)) {
+    throw err.conflict('Замовлення не в роботі');
+  }
+
+  logEvent(o.id, o.status, 'ready', { role: 'business' });
+  o.status = 'ready';
+  o.readyAt = Date.now();
+  persist();
+  return publicOrder(clone(o));
+}
+
+export async function businessRejectOrder(orderId, reasonCode) {
+  await lag(200);
+  const o = orderById(orderId);
+  if (!['placed', 'preparing'].includes(o.status)) throw err.conflict('Уже пізно відхиляти');
+
+  logEvent(o.id, o.status, 'rejected_by_business', { role: 'business' });
+  o.status = 'rejected_by_business';
+  o.cancelledAt = Date.now();
+  o.cancelReason = { reasonCode, note: '' };
+  // Онлайн-оплата завжди тягне за собою рефанд (B3)
+  if (o.paymentMethod === 'online') o.paymentStatus = 'refund_needed';
+  persist();
+  return publicOrder(clone(o));
+}
+
+/**
+ * Замовлення конкретного клієнта — для сторінки статусу.
+ *
+ * ⚠️ Тут `deliveryPin` НЕ вирізається, і це навмисно: код призначений
+ * саме клієнту, і сторінка його замовлення — єдине місце, де він
+ * показується. Курʼєру той самий код не віддається ніколи (B41).
+ */
+export async function fetchClientOrders(clientKey) {
+  await lag(120);
+  tickServer();
+  return clone(
+    db.orders.filter((o) => o.clientKey === clientKey).sort((a, b) => b.placedAt - a.placedAt)
+  );
 }
 
 function courierById(id) {

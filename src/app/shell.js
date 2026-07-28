@@ -17,6 +17,7 @@ import { attachSwipe } from '../features/shared/tabs.js';
 import { toast } from '../features/shared/toast.js';
 import { countdown, esc } from '../lib/format.js';
 import { icons } from '../features/shared/icons.js';
+import * as demo from '#demo';
 
 let root = null;
 let lastRoute = null;
@@ -28,8 +29,16 @@ function parseRoute(route) {
   return { area, tab };
 }
 
+/**
+ * Реєстр поверхонь. courier і admin — це сам Rocket Delivery; client
+ * і business приходять із демо-модуля, бо в реальній системі вони
+ * належать cstllife (ADR-0001). У продакшені demo.surfaces порожній,
+ * і ці екрани не потрапляють у бандл узагалі.
+ */
+const SURFACES = { courier, admin, ...demo.surfaces };
+
 function moduleFor(area) {
-  return area === 'admin' ? admin : courier;
+  return SURFACES[area] || courier;
 }
 
 /* ── Рендер ─────────────────────────────────────────────────────────────── */
@@ -55,6 +64,11 @@ function render() {
       <header class="nav">
         <div class="nav__title">${esc(mod.title(tab))}${sub ? `<small>${esc(sub)}</small>` : ''}</div>
         <button class="nav__btn" data-action="refresh" aria-label="Оновити">${icons.refresh()}</button>
+        ${
+          isAdmin || area === 'courier'
+            ? ''
+            : `<button class="nav__btn" data-action="switch-role" aria-label="Змінити роль">${icons.back()}</button>`
+        }
       </header>
       <main class="shell__body" id="screen">${mod.renderTab(state, tab)}</main>
       ${mod.tabsBar(state, tab)}
@@ -142,15 +156,29 @@ async function onClick(e) {
       await db.signOut();
       resetState();
       return;
+
+    case 'switch-role':
+      await geo.stop();
+      resetState();
+      return;
     default:
       break;
+  }
+
+  // Дії екрана входу, де ще немає ані сесії, ані поверхні. Порівняння
+  // назв живе всередині демо-модуля навмисне: тримати їх тут означало б
+  // лишати демо-рядки у продакшн-бандлі, бо shell.js збирається завжди.
+  if (demo.handleGlobal(action)) {
+    await geo.stop();
+    resetState();
+    return;
   }
 
   const mod = moduleFor(area);
   const handled = await mod.handle(action, el);
   if (!handled) return;
 
-  if (area !== 'admin') await courier.syncTracking();
+  if (area === 'courier') await courier.syncTracking();
 }
 
 /* ── Завантаження за роутом ─────────────────────────────────────────────── */
@@ -158,8 +186,8 @@ async function onClick(e) {
 async function loadCurrent() {
   const { area, tab } = parseRoute(getState().route);
   if (!getState().session) return;
-  if (area === 'admin') await admin.load();
-  else await courier.load(tab || 'queue');
+  const mod = moduleFor(area);
+  await mod.load(tab || mod.tabKeys[0]);
 }
 
 /* ── Таймери ────────────────────────────────────────────────────────────── */
