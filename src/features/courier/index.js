@@ -282,7 +282,10 @@ async function takePhoto() {
   try {
     const compressed = await photoLib.compress(file);
     const uploaded = await photoLib.upload(getState().complete.orderId, compressed.dataUrl);
-    patchFlow({ photo: { ...uploaded, bytes: compressed.bytes } });
+    // Мініатюра їде на сервер разом із дією: у демо адмін бачить саме її,
+    // бо приватного бакета Storage ще не існує (B13)
+    const thumb = await photoLib.thumbnail(compressed.dataUrl);
+    patchFlow({ photo: { ...uploaded, thumb, bytes: compressed.bytes } });
     haptic('ok');
   } catch {
     toast('Не вдалось обробити фото', 'danger');
@@ -303,6 +306,7 @@ async function finish(courierId) {
   try {
     const res = await db.completeDelivery(flow.orderId, courierId, {
       photoPath: flow.photo?.path,
+      photoThumb: flow.photo?.thumb,
       pin,
       pinBypassed: !!flow.pinBypassed,
     });
@@ -382,9 +386,8 @@ export async function syncTracking() {
   const shouldTrack = state.courier?.status === 'online' && state.active.length > 0;
 
   if (shouldTrack && !geo.isTracking()) {
-    await geo.start(() => {
-      /* У продакшені — Realtime Broadcast, не INSERT у таблицю (B16) */
-    });
+    // У продакшені — Realtime Broadcast, не INSERT у таблицю (B16)
+    await geo.start((pos) => db.updateCourierLocation(state.courier.id, pos));
   } else if (!shouldTrack && geo.isTracking()) {
     await geo.stop();
   }

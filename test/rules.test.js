@@ -458,3 +458,89 @@ test('замовлення, що довго висить, отримує над�
   assert.ok(stale.waitingBonus > 0, 'надбавка нарахована');
   assert.equal(queue[0].id, 'o3', 'найдовше очікуване — першим у списку');
 });
+
+/* ── Позиція курʼєра ────────────────────────────────────────────────────── */
+
+const POS = { lat: 50.7205, lng: 25.8144, accuracy: 12, at: Date.now() };
+
+test('позиція онлайн-курʼєра зберігається й видна адміну', async () => {
+  await api.updateCourierLocation('c1', POS);
+
+  const { locations } = await api.fetchAdminOverview();
+  assert.ok(locations.c1, 'адмін бачить позицію');
+  assert.equal(locations.c1.lat, POS.lat);
+  assert.equal(locations.c1.lng, POS.lng);
+});
+
+test('зберігається лише остання точка, а не маршрут', async () => {
+  await api.updateCourierLocation('c1', POS);
+  await api.updateCourierLocation('c1', { ...POS, lat: 50.73, at: POS.at + 9000 });
+
+  const { locations } = await api.fetchAdminOverview();
+  assert.equal(locations.c1.lat, 50.73, 'нова точка замінює стару');
+  assert.ok(!Array.isArray(locations.c1), 'історія переміщень не накопичується');
+});
+
+/**
+ * Трекінг поза зміною — це стеження за людиною, а не операційна потреба
+ * (docs/07-geolocation.md). Сервер має відмовляти сам, а не покладатись
+ * на те, що клієнт чемно перестане слати координати.
+ */
+test('офлайн-курʼєр не може писати позицію', async () => {
+  await api.setCourierStatus('c1', 'offline');
+  const res = await api.updateCourierLocation('c1', POS);
+
+  assert.equal(res, null, 'сервер мовчки відхиляє');
+  const { locations } = await api.fetchAdminOverview();
+  assert.ok(!locations.c1, 'позиції немає');
+});
+
+test('вихід з лінії стирає останню позицію', async () => {
+  await api.updateCourierLocation('c1', POS);
+  await api.setCourierStatus('c1', 'offline');
+
+  const { locations } = await api.fetchAdminOverview();
+  assert.ok(!locations.c1, 'позиція не переживає кінець зміни');
+});
+
+/* ── Фото як доказ ──────────────────────────────────────────────────────── */
+
+test('фото доїжджає до адміна зображенням, а не самим лише шляхом', async () => {
+  await api.acceptOrder('o1', 'c1');
+  await api.advanceStatus('o1', 'c1', 'picked_up');
+  await api.advanceStatus('o1', 'c1', 'on_the_way');
+  await api.completeDelivery('o1', 'c1', {
+    photoPath: 'local/o1.jpg',
+    photoThumb: 'data:image/jpeg;base64,/9j/DEMO',
+    pinBypassed: true,
+  });
+
+  const { photos } = await api.fetchAdminOverview();
+  const proof = photos.find((p) => p.orderId === 'o1');
+  assert.ok(proof, 'запис про фото є');
+  assert.equal(proof.thumb, 'data:image/jpeg;base64,/9j/DEMO');
+});
+
+test('координати закладу їдуть з активним замовленням — інакше карту нема з чого будувати', async () => {
+  await api.acceptOrder('o1', 'c1');
+  const [order] = await api.fetchActive('c1');
+
+  assert.ok(Number.isFinite(order.pickupLat));
+  assert.ok(Number.isFinite(order.pickupLng));
+  assert.ok(Number.isFinite(order.destLat));
+});
+
+/* ── Журнал ─────────────────────────────────────────────────────────────── */
+
+test('журнал пише виконавця, а не саму лише роль', async () => {
+  await api.acceptOrder('o1', 'c1');
+
+  const { events, couriers } = await api.fetchAdminOverview();
+  const accepted = events.find((e) => e.orderId === 'o1' && e.toStatus === 'courier_assigned');
+
+  assert.ok(accepted, 'подія записана');
+  assert.equal(accepted.actorRole, 'courier');
+  assert.equal(accepted.actorId, 'c1');
+  // Імʼя розвʼязується з довідника, а не дублюється в append-only події
+  assert.ok(couriers.find((c) => c.id === accepted.actorId)?.fullName);
+});

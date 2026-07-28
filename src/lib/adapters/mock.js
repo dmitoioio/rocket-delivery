@@ -308,6 +308,23 @@ function restore() {
 reset();
 restore();
 
+/**
+ * Скільки фото тримаємо як зображення.
+ *
+ * localStorage — це ~5 МБ на весь домен, а мініатюра в base64 — десятки
+ * кілобайт. Без обмеження демо на десятому замовленні впирається у квоту,
+ * persist() починає тихо падати, і ВЕСЬ стан перестає зберігатись — тобто
+ * фото зламало б зовсім не фото. У продакшені зображень тут немає взагалі:
+ * вони живуть у приватному бакеті Storage (B13).
+ */
+const PHOTO_KEEP = 6;
+
+function capPhotos() {
+  for (const p of db.photos.slice(0, Math.max(0, db.photos.length - PHOTO_KEEP))) {
+    delete p.thumb;
+  }
+}
+
 /** Скинути демо до насіннєвого стану. */
 export function resetDemo() {
   reset();
@@ -796,11 +813,20 @@ export async function fetchActive(courierId) {
   tickServer();
   return publicOrders(
     clone(
-      db.orders.filter(
-        (o) =>
-          o.courierId === courierId &&
-          ['courier_assigned', 'picked_up', 'on_the_way'].includes(o.status)
-      )
+      db.orders
+        .filter(
+          (o) =>
+            o.courierId === courierId &&
+            ['courier_assigned', 'picked_up', 'on_the_way'].includes(o.status)
+        )
+        // Координати закладу їдуть із замовленням: інакше карту нема
+        // від чого будувати, і вона лишається малюнком
+        .map((o) => ({
+          ...o,
+          businessName: db.business.name,
+          pickupLat: db.business.lat,
+          pickupLng: db.business.lng,
+        }))
     )
   );
 }
@@ -928,7 +954,11 @@ export async function advanceStatus(orderId, courierId, toStatus) {
  * Інваріант: без фото не приймається. Це перевірка СЕРВЕРА, не UI —
  * кнопка в інтерфейсі лише дублює її для зручності.
  */
-export async function completeDelivery(orderId, courierId, { photoPath, pin, pinBypassed }) {
+export async function completeDelivery(
+  orderId,
+  courierId,
+  { photoPath, photoThumb, pin, pinBypassed }
+) {
   await lag(320);
   const order = db.orders.find((o) => o.id === orderId && o.courierId === courierId);
   if (!order) throw err.permission();
@@ -945,7 +975,8 @@ export async function completeDelivery(orderId, courierId, { photoPath, pin, pin
   order.proofPhotoPath = photoPath;
   order.pinBypassed = !!pinBypassed;
 
-  db.photos.push({ orderId: order.id, path: photoPath, createdAt: Date.now() });
+  db.photos.push({ orderId: order.id, path: photoPath, thumb: photoThumb, createdAt: Date.now() });
+  capPhotos();
 
   const courier = courierById(courierId);
   courier.completedDeliveries += 1;
@@ -1008,8 +1039,36 @@ export async function setCourierStatus(courierId, status) {
   const c = courierById(courierId);
   if (!c) throw err.auth();
   c.status = status;
+  // Позиція офлайн-курʼєра застаріває миттєво й нікому не потрібна.
+  // Тримати її — це стежити за людиною поза зміною (docs/07)
+  if (status === 'offline') delete db.locations[courierId];
   persist();
   return clone(c);
+}
+
+/**
+ * Остання позиція курʼєра.
+ *
+ * Зберігається САМЕ ОСТАННЯ, а не історія: маршрут за зміну — це
+ * стеження, а не операційна потреба (docs/07-geolocation.md). Адміну
+ * треба відповісти клієнту «де їжа», для цього досить однієї точки.
+ *
+ * У продакшені це Realtime Broadcast, а не INSERT у таблицю (B16):
+ * запис кожні 8 секунд на курʼєра — це рядки, які ніхто не читає.
+ */
+export async function updateCourierLocation(courierId, pos) {
+  const c = courierById(courierId);
+  if (!c) throw err.auth();
+  if (c.status !== 'online') return null;
+
+  db.locations[courierId] = {
+    lat: pos.lat,
+    lng: pos.lng,
+    accuracy: pos.accuracy ?? null,
+    at: pos.at || Date.now(),
+  };
+  persist();
+  return clone(db.locations[courierId]);
 }
 
 /** Готівкові замовлення, за які курʼєр ще не звітував. */

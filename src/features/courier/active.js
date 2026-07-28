@@ -1,6 +1,7 @@
 /** Активна доставка: степер, карта, адреса з орієнтиром, одна головна дія. */
 
 import { stepper, statusChip, emptyState, esc, money, distance, icons } from '../shared/ui.js';
+import { geoMap } from '../shared/map.js';
 
 const NEXT = {
   courier_assigned: { to: 'picked_up', label: 'Забрав у закладі' },
@@ -32,12 +33,11 @@ export function render(state) {
 
     ${stepper(order.status)}
 
-    <div class="map">
-      <div class="map__route"></div>
-      <div class="pin pin--from"></div>
-      <div class="pin pin--to"></div>
-      <div class="map__badge num">${esc(distance(order.distanceKm))} · ~${esc(eta(order.distanceKm))}</div>
-    </div>
+    ${geoMap({
+      from: { lat: order.pickupLat, lng: order.pickupLng },
+      to: { lat: order.destLat, lng: order.destLng },
+      badge: `${distance(order.distanceKm)} · ~${eta(order.distanceKm)}`,
+    })}
 
     ${address(contact)}
     ${client(contact)}

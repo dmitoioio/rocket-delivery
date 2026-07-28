@@ -25,6 +25,7 @@ import {
   dateTime,
   elapsed,
 } from '../shared/ui.js';
+import { geoMap } from '../shared/map.js';
 
 const TABS = [
   { key: 'dashboard', label: 'Дашборд', icon: icons.dashboard },
@@ -409,6 +410,7 @@ function couriers(a) {
     : '';
 
   return (
+    whereabouts(a) +
     panel(
       'Курʼєри та зарплата',
       'Нараховане, борг по готівці й виплати',
@@ -424,29 +426,109 @@ function couriers(a) {
   );
 }
 
+/**
+ * Де курʼєри зараз.
+ *
+ * Єдине питання, на яке адмін мусить уміти відповісти клієнту по телефону:
+ * «де моя їжа». Досі позиція нікуди не йшла — `geo.start` викликався з
+ * порожнім колбеком, тобто трекінг витрачав батарею й не давав нічого.
+ *
+ * Показуємо ОДНУ останню точку й вік цієї точки. Вік важливіший за саму
+ * координату: свіжа точка за 3 км корисна, п'ятнадцятихвилинна — ні.
+ */
+/** «щойно», а не «щойно тому» — elapsed повертає і крапку в часі, і тривалість. */
+function freshness(at) {
+  const label = elapsed(at);
+  return label === 'щойно' ? 'щойно' : `${label} тому`;
+}
+
+function whereabouts(a) {
+  const online = a.couriers.filter((c) => c.status === 'online');
+  const locations = a.locations || {};
+
+  if (!online.length) {
+    return panel(
+      'Хто на лінії',
+      'Позиція оновлюється лише під час активної доставки',
+      `<div class="panel__body">${emptyState({
+        icon: 'couriers',
+        title: 'Нікого немає на лінії',
+        text: 'Поза зміною позиція не зберігається — це не стеження за людиною.',
+      })}</div>`
+    );
+  }
+
+  const rows = online
+    .map((c) => {
+      const pos = locations[c.id];
+      const active = a.orders.find(
+        (o) =>
+          o.courierId === c.id && ['courier_assigned', 'picked_up', 'on_the_way'].includes(o.status)
+      );
+      const age = pos ? Date.now() - pos.at : null;
+      const stale = age !== null && age > 120000;
+
+      return `<div class="card" style="margin-bottom:12px">
+      <div class="row">
+        <div class="cell-name">${avatar(c.fullName, true)}${esc(c.fullName)}</div>
+        ${
+          pos
+            ? statusChip(stale ? 'preparing' : 'on_the_way', freshness(pos.at))
+            : statusChip('placed', 'позиції ще немає')
+        }
+      </div>
+      ${
+        pos
+          ? geoMap({
+              from: a.business,
+              to: active ? { lat: active.destLat, lng: active.destLng } : null,
+              courier: pos,
+              badge: active ? active.code : 'без замовлення',
+            })
+          : `<div class="tiny" style="margin-top:10px">
+               Трекінг вмикається лише з активним замовленням — зараз його немає.
+             </div>`
+      }
+      ${
+        stale
+          ? `<div class="callout callout--warn" style="margin-top:10px">
+               Точка застаріла: телефон міг втратити мережу або застосунок
+               згорнули. Це не означає, що курʼєр стоїть.
+             </div>`
+          : ''
+      }
+    </div>`;
+    })
+    .join('');
+
+  return panel(
+    'Хто на лінії',
+    `${online.length} ${online.length === 1 ? 'курʼєр' : 'курʼєрів'}`,
+    `<div class="panel__body">${rows}</div>`
+  );
+}
+
 /* ── Фото ───────────────────────────────────────────────────────────────── */
 
 function photos(a) {
   const withPhoto = a.orders.filter((o) => o.proofPhotoPath);
+  const imageOf = (orderId) => a.photos?.find((p) => p.orderId === orderId)?.thumb;
+
+  // Обхід коду — головне, заради чого цей екран існує. Саме там фото
+  // з доказу перетворюється на єдиний доказ, і дивитись його треба
+  // першим, а не шукати серед решти
+  const sorted = [...withPhoto].sort(
+    (x, y) => Number(!!y.pinBypassed) - Number(!!x.pinBypassed) || y.deliveredAt - x.deliveredAt
+  );
 
   return `
     ${panel(
       'Фото підтверджень',
       `${withPhoto.length} за поточний період`,
       withPhoto.length
-        ? `<div class="tbl-scroll"><table>
-            <thead><tr><th>Замовлення</th><th>Коли</th><th>Код клієнта</th><th>Статус</th></tr></thead>
-            <tbody>${withPhoto
-              .map(
-                (o) => `<tr data-action="open-order" data-id="${esc(o.id)}">
-              <td class="num">${esc(o.code)}</td>
-              <td class="num">${esc(dateTime(o.deliveredAt))}</td>
-              <td>${o.pinBypassed ? statusChip('preparing', 'обхід коду') : statusChip('delivered', 'підтверджено')}</td>
-              <td>${statusChip(o.status)}</td>
-            </tr>`
-              )
-              .join('')}</tbody>
-          </table></div>`
+        ? `<div class="panel__body"><div class="proofs">${sorted
+            .map((o) => proofCard(o, imageOf(o.id)))
+            .join('')}</div></div>`
         : `<div class="panel__body">${emptyState({ icon: 'photo', title: 'Фото поки немає' })}</div>`
     )}
 
@@ -454,6 +536,25 @@ function photos(a) {
       Фото зберігаються 90 днів, потім видаляються автоматично. Це персональні
       дані — доступ лише адміну й закладу-власнику замовлення.
     </div>`;
+}
+
+function proofCard(o, image) {
+  return `<figure class="proof" data-action="open-order" data-id="${esc(o.id)}">
+    ${
+      image
+        ? `<img class="proof__img" src="${esc(image)}" alt="Фото підтвердження ${esc(o.code)}" loading="lazy">`
+        : `<div class="proof__img proof__img--none">${icons.photo(20)}
+             <span class="tiny">зображення не збереглось</span>
+           </div>`
+    }
+    <figcaption class="proof__cap">
+      <div class="row">
+        <span class="num tiny">${esc(o.code)}</span>
+        ${o.pinBypassed ? statusChip('preparing', 'обхід коду') : statusChip('delivered', 'код звірено')}
+      </div>
+      <div class="tiny" style="margin-top:4px">${esc(dateTime(o.deliveredAt))}</div>
+    </figcaption>
+  </figure>`;
 }
 
 /* ── Журнал ─────────────────────────────────────────────────────────────── */
@@ -482,7 +583,7 @@ function journal(a) {
           <td class="num">${esc(dateTime(e.createdAt))}</td>
           <td class="num">${esc(codeOf(e.orderId))}</td>
           <td>${esc(statusLabel(e.fromStatus))} → <strong>${esc(statusLabel(e.toStatus))}</strong></td>
-          <td class="mut">${esc(e.actorRole)}</td>
+          <td>${actorCell(e, a)}</td>
         </tr>`
           )
           .join('')}</tbody>
@@ -493,6 +594,32 @@ function journal(a) {
       Журнал append-only: рядки не редагуються й не видаляються ніким,
       включно з адміном. Без цього спір «я тиснув доставлено» недоказовий.
     </div>`;
+}
+
+const ROLE_LABELS = {
+  courier: 'курʼєр',
+  admin: 'адмін',
+  business: 'заклад',
+  client: 'клієнт',
+  system: 'система',
+};
+
+/**
+ * Хто саме зробив перехід.
+ *
+ * `actorId` писався від початку, але журнал показував саму лише роль —
+ * «курʼєр» у спорі не відповідає на питання, ЯКИЙ курʼєр. Ім'я
+ * розвʼязується з довідника, а не зберігається в події: перейменування
+ * не має переписувати append-only журнал.
+ */
+function actorCell(e, a) {
+  const role = ROLE_LABELS[e.actorRole] || e.actorRole;
+  const name = a.couriers.find((c) => c.id === e.actorId)?.fullName;
+
+  if (!name) return `<span class="mut">${esc(role)}</span>`;
+  return `<div class="cell-name">${avatar(name, true)}
+    <span>${esc(name)}<span class="tiny" style="display:block">${esc(role)}</span></span>
+  </div>`;
 }
 
 /* ── Шторки ─────────────────────────────────────────────────────────────── */

@@ -175,6 +175,18 @@ export function setCourierStatus(courierId, status) {
   });
 }
 
+/**
+ * Позиція курʼєра.
+ *
+ * Свідомо НЕ через actOrQueue: координата має цінність лише зараз.
+ * Складати позиції в офлайн-чергу означає через 20 хвилин відтворити
+ * маршрут, яким курʼєр давно проїхав, — марний трафік і зайве стеження.
+ * Втрачена точка не втрата: наступна прийде через 8 секунд.
+ */
+export function updateCourierLocation(courierId, pos) {
+  return adapter.updateCourierLocation?.(courierId, pos).catch(() => null) ?? Promise.resolve(null);
+}
+
 /* ── Адмінські дії ──────────────────────────────────────────────────────── */
 
 export function confirmHandoff(handoffId, amount) {

@@ -95,6 +95,14 @@ export async function setCourierStatus() {
 export async function declareCashHandoff() {
   return TODO('declareCashHandoff');
 }
+/**
+ * ⚠️ Тут має бути Realtime Broadcast, а не INSERT (B16). Курʼєр шле
+ * точку кожні 8 секунд: за зміну це сотні рядків, які ніхто не прочитає,
+ * і водночас готовий журнал переміщень людини.
+ */
+export async function updateCourierLocation() {
+  return TODO('updateCourierLocation');
+}
 export async function getOrderContact() {
   return TODO('getOrderContact');
 }
