@@ -18,16 +18,20 @@ import { toast } from '../shared/toast.js';
 import { esc } from '../../lib/format.js';
 import * as business from './business.js';
 import * as client from './client.js';
+import * as demoConsole from './console.js';
 
 export const isDemo = true;
 
 /**
- * Поверхні, які в реальній системі належать cstllife (ADR-0001).
+ * Поверхні, яких немає в продакшн-збірці Rocket Delivery.
  *
- * Роутер бере їх звідси, тож у продакшн-збірці, де підставляється
+ * `business` і `client` у реальній системі належать cstllife (ADR-0001);
+ * `console` не існує ніде — це пульт самої симуляції.
+ *
+ * Роутер бере їх звідси, тож у продакшені, де підставляється
  * demo.stub.js, вони не існують — ні як екрани, ні як імпорти.
  */
-export const surfaces = { business, client };
+export const surfaces = { business, client, console: demoConsole };
 
 /** Ролі, доступні для входу одним кліком у демо. */
 export const extraRoles = [
@@ -42,6 +46,12 @@ export const extraRoles = [
     label: 'Заклад',
     name: 'Суші Мар · кухня і готівка',
     route: 'business/kitchen',
+  },
+  {
+    key: 'console',
+    label: 'Пульт демо',
+    name: 'Потік замовлень, кухня, графік',
+    route: 'console/sim',
   },
 ];
 

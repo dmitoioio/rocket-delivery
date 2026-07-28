@@ -606,13 +606,50 @@ export function setBusinessHours(from, to) {
   return clone(db.business.workingHours);
 }
 
+/**
+ * Налаштування демо-симуляції.
+ *
+ * Генератор і автопілот кухні існували в коді від початку, але вмикати
+ * їх не було звідки — тобто вони були мертві. Черга вичерпувалась
+ * назавжди, і демо, яке мало показувати живу систему, показувало
+ * чотири насіннєві замовлення й порожній екран після них.
+ */
+export function setDemoSettings(patch) {
+  db.demo = { ...db.demo, ...patch };
+  // Щойно ввімкнений генератор не має вистрілювати замовленням одразу:
+  // інакше кожне перемикання тумблера створює зайве
+  if (patch.generator) db.demo.lastSpawn = Date.now();
+  persist();
+  return clone(db.demo);
+}
+
+/** Створити демо-замовлення просто зараз, не чекаючи інтервалу. */
+export function spawnDemoOrder() {
+  const order = makeGeneratedOrder(Date.now());
+  db.orders.push(order);
+  logEvent(order.id, null, 'placed', { role: 'client' });
+  persist();
+  return publicOrder(clone(order));
+}
+
 /** Генератор замовлень — щоб черга не вичерпувалась і демо було живим. */
 function maybeSpawnOrder(now) {
   const d = db.demo;
   if (!d?.generator) return;
-  if (now - (d.lastSpawn || 0) < (d.intervalSec || 90) * 1000) return;
+  // `??`, не `||`: інтервал 0 означає «щоразу», а не «за замовчуванням 90»
+  if (now - (d.lastSpawn || 0) < (d.intervalSec ?? 90) * 1000) return;
 
   d.lastSpawn = now;
+  const order = makeGeneratedOrder(now);
+  db.orders.push(order);
+  logEvent(order.id, null, 'placed', { role: 'client' });
+}
+
+/**
+ * Фабрика демо-замовлення — спільна для таймера й кнопки «створити зараз».
+ * Дві копії цього коду розійшлись би за тиждень.
+ */
+function makeGeneratedOrder(now) {
   // Генератор не створює свідомо задалеких замовлень — вони б лише
   // засмічували чергу відмовами
   const reachable = DEMO_DESTINATIONS.filter(
@@ -624,7 +661,7 @@ function maybeSpawnOrder(now) {
   const itemsTotal = 180 + Math.floor(Math.random() * 12) * 40;
 
   const order = {
-    id: `g${now.toString(36)}`,
+    id: `g${now.toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`,
     code: nextOrderCode(),
     businessId: db.business.id,
     courierId: null,
@@ -658,9 +695,7 @@ function maybeSpawnOrder(now) {
     readyAt: null,
   };
   if (order.paymentMethod === 'online') order.paymentStatus = 'paid';
-
-  db.orders.push(order);
-  logEvent(order.id, null, 'placed', { role: 'client' });
+  return order;
 }
 
 /* ── Операції закладу ───────────────────────────────────────────────────── */

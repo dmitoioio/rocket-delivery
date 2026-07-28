@@ -544,3 +544,73 @@ test('журнал пише виконавця, а не саму лише рол
   // Імʼя розвʼязується з довідника, а не дублюється в append-only події
   assert.ok(couriers.find((c) => c.id === accepted.actorId)?.fullName);
 });
+
+/* ── Живе демо: черга не вичерпується ───────────────────────────────────── */
+
+test('без генератора черга скінченна — саме тому він і потрібен', async () => {
+  const before = (await api.fetchAdminOverview()).orders.length;
+  await api.fetchQueue();
+  await api.fetchQueue();
+  const after = (await api.fetchAdminOverview()).orders.length;
+
+  assert.equal(after, before, 'сама по собі система нових замовлень не створює');
+});
+
+test('увімкнений генератор наповнює чергу з часом', async () => {
+  api.setDemoSettings({ generator: true });
+  // Окремим викликом: вмикання генератора зсуває lastSpawn у «зараз»
+  api.setDemoSettings({ intervalSec: 0 });
+  const before = (await api.fetchAdminOverview()).orders.length;
+
+  // tickServer викликається на кожному читанні — саме так демо й живе
+  await api.fetchQueue();
+  const after = (await api.fetchAdminOverview()).orders.length;
+
+  assert.ok(after > before, `було ${before}, стало ${after}`);
+});
+
+/**
+ * Тумблер не має створювати замовлення сам фактом перемикання —
+ * інакше «увімкнув-вимкнув» непомітно засмічує чергу.
+ */
+test('вмикання генератора не створює замовлення одразу', async () => {
+  const before = (await api.fetchAdminOverview()).orders.length;
+  api.setDemoSettings({ generator: true, intervalSec: 90 });
+  await api.fetchQueue();
+
+  assert.equal((await api.fetchAdminOverview()).orders.length, before);
+});
+
+test('згенероване замовлення проходить ті самі правила, що й ручне', async () => {
+  const order = api.spawnDemoOrder();
+
+  assert.ok(order.code.startsWith('RD-'));
+  assert.ok(order.distanceKm <= api.config.maxDeliveryRadiusKm, 'генератор не створює задалеких');
+  assert.equal(order.status, 'placed', 'починає з початку статус-машини, а не з «готово»');
+  assert.equal(order.deliveryPin, undefined, 'код клієнта не віддається назовні (B41)');
+
+  const { events } = await api.fetchAdminOverview();
+  assert.ok(
+    events.some((e) => e.orderId === order.id && e.toStatus === 'placed'),
+    'потрапляє в журнал, як і будь-яке інше'
+  );
+});
+
+test('два згенеровані замовлення не збігаються ідентифікаторами', () => {
+  const a = api.spawnDemoOrder();
+  const b = api.spawnDemoOrder();
+  assert.notEqual(a.id, b.id);
+  assert.notEqual(a.code, b.code);
+});
+
+test('вимкнений автопілот кухні лишає замовлення готуватись', async () => {
+  api.setDemoSettings({ autoKitchen: false });
+  const order = api.spawnDemoOrder();
+  await api.businessAcceptOrder(order.id, 10);
+
+  // Час готовності минув, але кнопку ніхто не тиснув
+  const { orders } = await api.fetchAdminOverview();
+  const mine = orders.find((o) => o.id === order.id);
+  assert.equal(mine.status, 'preparing', 'готовність — дія людини, а не таймера');
+  assert.equal(mine.readyAt, null);
+});
