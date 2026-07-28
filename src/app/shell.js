@@ -16,6 +16,7 @@ import * as admin from '../features/admin/index.js';
 import { attachSwipe } from '../features/shared/tabs.js';
 import { toast } from '../features/shared/toast.js';
 import { countdown, esc } from '../lib/format.js';
+import { versionLabel } from '../lib/version.js';
 import { icons } from '../features/shared/icons.js';
 import * as demo from '#demo';
 
@@ -61,6 +62,7 @@ function render() {
   root.innerHTML = `
     <div class="shell ${isAdmin ? 'shell--admin' : 'shell--phone'}">
       ${netbar(state)}
+      <div class="buildbar num">${esc(versionLabel)}</div>
       <header class="nav">
         <div class="nav__title">${esc(mod.title(tab))}${sub ? `<small>${esc(sub)}</small>` : ''}</div>
         <button class="nav__btn" data-action="refresh" aria-label="Оновити">${icons.refresh()}</button>

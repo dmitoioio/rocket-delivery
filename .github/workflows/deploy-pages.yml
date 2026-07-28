@@ -21,7 +21,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # Уся історія: номер збірки — це кількість комітів, а за мілкого
+      # checkout (depth=1 за замовчуванням) вона завжди дорівнювала б 1,
+      # тобто лічильник ніколи б не змінювався — рівно те, для чого його
+      # й додано
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:

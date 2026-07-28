@@ -1,5 +1,7 @@
 /** Спільна конфігурація збірки для build.mjs, dev.mjs і standalone.mjs. */
 
+import { execFileSync } from 'node:child_process';
+
 /**
  * Змінні середовища, які МОЖНА вбудовувати в бандл.
  * Білий список, а не process.env цілком — інакше service_role-ключ
@@ -65,7 +67,49 @@ export function buildAliases(resolve) {
 }
 
 export function publicEnvDefine() {
-  return Object.fromEntries(
-    PUBLIC_ENV.map((k) => [`process.env.${k}`, JSON.stringify(process.env[k] ?? '')])
-  );
+  return {
+    ...Object.fromEntries(
+      PUBLIC_ENV.map((k) => [`process.env.${k}`, JSON.stringify(process.env[k] ?? '')])
+    ),
+    ...buildStampDefine(),
+  };
+}
+
+/* ── Штамп збірки ───────────────────────────────────────────────────────── */
+
+/**
+ * Номер збірки — це кількість комітів, а не рукописна цифра.
+ *
+ * Рукописну забувають підняти саме тоді, коли на неї дивляться:
+ * бачиш ту саму цифру й не знаєш, чи деплой не доїхав, чи хтось
+ * не оновив константу. Лічильник комітів росте сам і монотонно,
+ * тож «34 → 35» означає рівно те, що здається.
+ */
+function git(args, fallback) {
+  try {
+    return execFileSync('git', args, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    return fallback;
+  }
+}
+
+export function buildStamp() {
+  // На GitHub Actions checkout за замовчуванням мілкий (depth=1), тож
+  // rev-list дав би «1». Тому в CI довантажуємо історію — див. ci.yml
+  // і deploy-pages.yml: fetch-depth: 0
+  const build = git(['rev-list', '--count', 'HEAD'], '0');
+  const sha = git(['rev-parse', '--short=7', 'HEAD'], process.env.GITHUB_SHA?.slice(0, 7) || '—');
+  return { build, sha, at: new Date().toISOString() };
+}
+
+function buildStampDefine() {
+  const s = buildStamp();
+  return {
+    __BUILD_NUMBER__: JSON.stringify(s.build),
+    __BUILD_SHA__: JSON.stringify(s.sha),
+    __BUILD_AT__: JSON.stringify(s.at),
+  };
 }

@@ -5,9 +5,11 @@ import * as demo from '#demo';
 import { setState } from '../../lib/store.js';
 import { toast, haptic } from '../shared/toast.js';
 import { esc } from '../../lib/format.js';
+import { versionLabel } from '../../lib/version.js';
 
 export function render() {
   return `<div class="login">
+    <div class="buildbar num">${esc(versionLabel)}</div>
     <h1 class="login__logo">Rocket Delivery</h1>
     <p class="login__sub">Доставка CSTL LIFE · Олика</p>
 
