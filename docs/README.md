@@ -34,6 +34,7 @@
 - [07-geolocation.md](07-geolocation.md) — трекінг курʼєра
 - [12-technical-design.md](12-technical-design.md) — внутрішня будова застосунку: модулі, стан, офлайн, помилки
 - [14-cstllife-integration.md](14-cstllife-integration.md) — 🔌 контракт інтеграції: що викликає cstllife і що повертається
+- [FOR_CSTLLIFE_CLAUDE.md](FOR_CSTLLIFE_CLAUDE.md) — 📤 **передавальний брифінг** для команди cstllife: уся суть продукту, рішення й причини. Самодостатній, розрахований на того, хто нашого коду не бачить
 
 ### Дизайн
 - [08-design-system.md](08-design-system.md) — кольори, шрифти, компоненти
