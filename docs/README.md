@@ -33,6 +33,7 @@
 - [05-roles-auth-rls.md](05-roles-auth-rls.md) — доступ і приватність
 - [07-geolocation.md](07-geolocation.md) — трекінг курʼєра
 - [12-technical-design.md](12-technical-design.md) — внутрішня будова застосунку: модулі, стан, офлайн, помилки
+- [14-cstllife-integration.md](14-cstllife-integration.md) — 🔌 контракт інтеграції: що викликає cstllife і що повертається
 
 ### Дизайн
 - [08-design-system.md](08-design-system.md) — кольори, шрифти, компоненти
