@@ -1363,3 +1363,12 @@ export async function setCourierActive(courierId, isActive) {
 export function __reset() {
   reset();
 }
+
+/**
+ * Realtime у моці немає — і не має бути: підписка на памʼять власного
+ * браузера нічого не синхронізує. `null` означає «покладайся на
+ * опитування», і оболонка саме так це й читає.
+ */
+export function watchOrders() {
+  return null;
+}

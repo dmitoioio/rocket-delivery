@@ -155,6 +155,7 @@ async function onClick(e) {
       return;
     case 'logout':
       await geo.stop();
+      stopWatching(); // канал прив'язаний до сесії — після виходу він мертвий
       await db.signOut();
       resetState();
       return;
@@ -220,6 +221,29 @@ function scheduleReload() {
   }, 1200);
 }
 
+/* ── Синхронізація ──────────────────────────────────────────────────────── */
+
+let watching = false;
+let unwatch = null;
+
+/**
+ * Підписка на зміни замовлень, якщо бекенд її підтримує.
+ *
+ * Мок повертає null — підписка на памʼять власного браузера нічого не
+ * синхронізує. Жива база повертає функцію відписки, і тоді опитування
+ * сповільнюється вчетверо (15 с → 60 с), але не зникає.
+ */
+function startWatching() {
+  unwatch = db.watchOrders(() => scheduleReload());
+  watching = unwatch !== null;
+}
+
+function stopWatching() {
+  unwatch?.();
+  unwatch = null;
+  watching = false;
+}
+
 /* ── Старт ──────────────────────────────────────────────────────────────── */
 
 export function start(mountPoint) {
@@ -239,13 +263,19 @@ export function start(mountPoint) {
   document.addEventListener('click', onClick);
   setInterval(tickCountdowns, 1000);
 
-  // Періодичне оновлення черги: Realtime додасться разом із Supabase,
-  // але покладатись лише на нього не можна — після розриву події
-  // не «догортаються», потрібне повне перечитування (docs/12, розділ 5)
-  setInterval(() => {
-    const { area, tab } = parseRoute(getState().route);
-    if (getState().session && (area === 'admin' || tab === 'queue')) loadCurrent();
-  }, 15000);
+  startWatching();
+
+  // Періодичне перечитування. З Realtime воно рідше, але НЕ вимикається:
+  // після розриву звʼязку події не «догортаються», і черга залишилась би
+  // застарілою назавжди (docs/12, розділ 5). Realtime — прискорювач,
+  // опитування — страховка.
+  setInterval(
+    () => {
+      const { area, tab } = parseRoute(getState().route);
+      if (getState().session && (area === 'admin' || tab === 'queue')) loadCurrent();
+    },
+    watching ? 60000 : 15000
+  );
 
   window.addEventListener('offline', () => toast('Звʼязок зник — дії підуть у чергу', 'danger'));
 

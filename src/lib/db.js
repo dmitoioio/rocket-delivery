@@ -218,6 +218,22 @@ export function setCourierActive(courierId, isActive) {
   return read('setCourierActive', () => adapter.setCourierActive(courierId, isActive));
 }
 
+/**
+ * Підписка на зміни замовлень.
+ *
+ * Повертає функцію відписки або `null`, якщо бекенд синхронізації не
+ * підтримує. Виклик не кидає помилок: обірваний Realtime не має валити
+ * застосунок — опитування лишається і без нього.
+ */
+export function watchOrders(onChange) {
+  try {
+    return adapter.watchOrders?.(onChange) ?? null;
+  } catch (e) {
+    report(toAppError(e), 'watchOrders');
+    return null;
+  }
+}
+
 /* ── Обробники відкладених дій ──────────────────────────────────────────── */
 /* Той самий ключ ідемпотентності мандрує з дією через усі ретраї, тож
    повтор не створює другу дію на сервері. */

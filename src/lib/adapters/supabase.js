@@ -445,3 +445,22 @@ export const config = {
     { afterMin: 20, bonus: 20 },
   ],
 };
+
+/* ── Синхронізація ──────────────────────────────────────────────────────────
+   Realtime поважає RLS: у канал приходять лише ті рядки, які підписник і
+   так має право прочитати. Це та сама політика, а не друга, узгоджена
+   вручну — інакше витік стався б саме через канал.
+
+   ⚠️ Повертає функцію відписки або null. Опитування при цьому НЕ
+   вимикається, лише сповільнюється: після розриву звʼязку події не
+   «догортаються», і без повного перечитування черга залишиться застарілою
+   (docs/12, розділ 5). Realtime — прискорювач, а не єдине джерело. */
+export function watchOrders(onChange) {
+  const channel = db()
+    .channel('rd-orders')
+    .on('postgres_changes', { event: '*', schema: 'delivery', table: 'orders' }, onChange)
+    .on('postgres_changes', { event: '*', schema: 'delivery', table: 'cash_handoffs' }, onChange)
+    .subscribe();
+
+  return () => db().removeChannel(channel);
+}
