@@ -44,3 +44,13 @@ coverage/
 playwright-report/
 test-results/
 .screens/
+
+# Рантайм-маркери хуків Claude — стан сесії, не код
+.claude/.flow-release
+.claude/.token-halt
+.claude/hooks/.flow-handoff-warned
+.claude/hooks/.flow-warn-35
+.claude/hooks/.flow-warn-55
+
+# Архіви
+*.zip
