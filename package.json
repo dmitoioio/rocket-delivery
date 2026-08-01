@@ -21,8 +21,10 @@
     "format:check": "prettier --check \"**/*.{js,mjs,json,css,html}\"",
     "db:diff": "supabase db diff -f",
     "db:push": "supabase db push",
-    "db:reset": "supabase db reset",
-    "test": "node --test \"test/**/*.test.js\""
+    "db:reset": "node scripts/db-local.mjs reset",
+    "test": "node --test \"test/**/*.test.js\"",
+    "db:local": "node scripts/db-local.mjs up",
+    "db:test": "node scripts/db-local.mjs test"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",
