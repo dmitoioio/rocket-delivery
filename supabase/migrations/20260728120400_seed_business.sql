@@ -38,6 +38,12 @@ WHERE NOT EXISTS (SELECT 1 FROM delivery.businesses);
 --   UPDATE auth.users
 --      SET raw_app_meta_data = COALESCE(raw_app_meta_data, '{}'::jsonb)
 --                              || '{"role":"admin"}'::jsonb
---    WHERE email = 'ваша@пошта';
+--    WHERE email = 'ваша@пошта'
+--   RETURNING email, raw_app_meta_data ->> 'role' AS role;
+--
+-- ⚠️ RETURNING тут не для краси. Без нього SQL Editor на БУДЬ-ЯКИЙ UPDATE
+-- відповідає «Success. No rows returned» — і однаково виглядають випадок
+-- «роль призначено» та «пошта не збіглась, не призначено нічого».
+-- З RETURNING порожня відповідь означає рівно одне: не спрацювало.
 --
 -- Після цього треба вийти й зайти знову: роль потрапляє в токен при вході.

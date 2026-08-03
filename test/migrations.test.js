@@ -23,6 +23,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { buildBundle, BUNDLE } from '../scripts/bundle-sql.mjs';
 
 const MIGRATIONS = 'supabase/migrations';
 const SHIM = 'supabase/shim/00-supabase-compat.sql';
@@ -91,4 +92,44 @@ test('шим лежить поза теками накату', () => {
 test('насіння закладу є: після накату база не порожня', () => {
   const seeded = files.some((f) => /INSERT\s+INTO\s+delivery\.businesses/i.test(sql(f)));
   assert.ok(seeded, 'жодна міграція не додає заклад — черга курʼєра буде порожня назавжди');
+});
+
+/**
+ * `supabase/SETUP.sql` — те, що Дмитро вставляє в SQL Editor руками. Це
+ * копія міграцій, а копія рано чи пізно розходиться з оригіналом (Розділ 1).
+ * Розходження тут особливо підле: файл виглядає свіжим, накат «успішний»,
+ * а в базі стара схема.
+ */
+test('SETUP.sql збігається з міграціями', () => {
+  assert.equal(
+    readFileSync(BUNDLE, 'utf8'),
+    buildBundle(),
+    `${BUNDLE} відстав від міграцій — перегенерувати: npm run db:bundle`
+  );
+});
+
+/**
+ * Ідемпотентність накату. Прогін проти живого Postgres перевіряє це
+ * по-справжньому, але він не в `npm test` (потрібен кластер), тож тут —
+ * дешевий сторож на найчастішу пастку.
+ *
+ * `ADD CONSTRAINT IF NOT EXISTS` у Postgres НЕ ІСНУЄ. Рівно один такий
+ * рядок пережив і рев'ю, і читання очима, і впав на другому прогоні
+ * підряд: `constraint "orders_cash_handoff_fk" already exists`.
+ */
+test('ADD CONSTRAINT загорнутий у DO-блок — інакше повторний накат падає', () => {
+  for (const f of files) {
+    // Коментарі геть: слова «ADD CONSTRAINT IF NOT EXISTS не існує» у
+    // поясненні поруч — не команда. Перша версія цього тесту ловила саме
+    // їх і показувала червоне на правильному коді
+    const code = sql(f).replace(/--[^\n]*/g, '');
+
+    for (const m of code.matchAll(/ADD\s+CONSTRAINT\s+(\w+)/gi)) {
+      assert.match(
+        code.slice(Math.max(0, m.index - 300), m.index),
+        /DO\s+\$\$\s*BEGIN/i,
+        `${f}: ADD CONSTRAINT ${m[1]} без DO-блоку з EXCEPTION WHEN duplicate_object`
+      );
+    }
+  }
 });

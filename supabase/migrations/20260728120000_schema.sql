@@ -220,9 +220,19 @@ CREATE TABLE IF NOT EXISTS delivery.cash_handoffs (
   resolution_note text
 );
 
-ALTER TABLE delivery.orders
-  ADD CONSTRAINT orders_cash_handoff_fk
-  FOREIGN KEY (cash_handoff_id) REFERENCES delivery.cash_handoffs(id);
+-- Зв'язок ставиться окремо: orders створюються ВИЩЕ за cash_handoffs, тож
+-- на момент CREATE TABLE посилатись ще нема на що.
+--
+-- ⚠️ `ADD CONSTRAINT IF NOT EXISTS` у Postgres не існує — тільки DO-блок.
+-- Це був єдиний рядок у всіх п'яти міграціях, що не переживав повторного
+-- накату: перший прогін проходив, другий падав із `constraint
+-- "orders_cash_handoff_fk" for relation "orders" already exists`. Знайдено
+-- не читанням (читання його якраз пропустило), а другим прогоном підряд.
+DO $$ BEGIN
+  ALTER TABLE delivery.orders
+    ADD CONSTRAINT orders_cash_handoff_fk
+    FOREIGN KEY (cash_handoff_id) REFERENCES delivery.cash_handoffs(id);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- ── payrolls ───────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS delivery.payrolls (
