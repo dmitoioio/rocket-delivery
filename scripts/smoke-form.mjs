@@ -1,5 +1,5 @@
 /**
- * Смоук форми: набране не зникає під фоновим оновленням.
+ * Смоук оболонки: вхід працює, а набране не зникає під фоновим оновленням.
  *
  * Баг, заради якого це існує. Рендер замінює розмітку цілком — разом
  * із полями введення й фокусом. Поки екранів із формами не було, це
@@ -9,12 +9,19 @@
  *
  *   «я не можу вписати, мене просто викидає і весь текст пропадає»
  *
- * Перевіряються ОБИДВА напрямки, бо однобока перевірка тут гірша за
- * жодну: фікс, який просто вимкнув би оновлення екрана, пройшов би
- * першу половину й зламав застосунок.
+ * Перевіряються ТРИ речі, бо однобока перевірка тут гірша за жодну:
+ * фікс, який просто вимкнув би оновлення екрана, пройшов би другу
+ * перевірку й зламав дві інші. Що й сталось — перша версія фікса
+ * зберегла текст і зламала вхід.
  *
- *   1. Форма заповнена → фонове оновлення НЕ чіпає ні текст, ні фокус.
- *   2. Форма порожня   → фонове оновлення таки перемальовує екран.
+ *   1. Вхід логіном і паролем узагалі працює.
+ *   2. Форма заповнена → фонове оновлення НЕ чіпає ні текст, ні фокус.
+ *   3. Форма порожня   → фонове оновлення таки перемальовує екран.
+ *
+ * Прокрутки серед перевірок немає навмисно: я підозрював той самий баг
+ * і виміряв — `.shell` має `min-height: 100dvh`, тож гортається документ,
+ * а не контейнер, який замінює рендер. Позиція переживає перемальовування
+ * (заміряно: 200px до, 200px після). Фікс без бага не пишеться.
  *
  * Працює на demo-збірці: перевіряється механіка оболонки, а не бекенд.
  * Запуск: npm run build (VITE_APP_ENV=demo), потім npm run smoke:form
@@ -44,7 +51,7 @@ function softExit(message) {
     console.error(`❌ ${message}`);
     process.exit(1);
   }
-  console.warn(`⚠️  ${message} — смоук форми пропущено`);
+  console.warn(`⚠️  ${message} — смоук оболонки пропущено`);
   process.exit(0);
 }
 
@@ -85,18 +92,55 @@ try {
   softExit(`браузер не запустився: ${e.message.split('\n')[0]}`);
 }
 
-const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+// Телефонний розмір: на ньому й працюють люди
+const page = await browser.newPage({ viewport: { width: 390, height: 760 } });
 await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'networkidle' });
-
-// Демо-вхід адміном: кнопка адміна — темна
-await page.click('.btn-role.btn-dark[data-demo]');
-await page.waitForTimeout(600);
-await page.click('[data-tab="orders"]');
-await page.waitForSelector('#no-name');
 
 const problems = [];
 
-/* ── 1. Заповнена форма переживає фонове оновлення ───────────────────────── */
+async function finish() {
+  await browser.close();
+  server.close();
+  if (problems.length) {
+    console.error('\n❌ смоук оболонки не пройдено:');
+    for (const p of problems) console.error(`   • ${p}`);
+    process.exit(1);
+  }
+  console.log('\n✅ смоук оболонки: 3/3');
+  process.exit(0);
+}
+
+/* ── 1. Вхід логіном і паролем ───────────────────────────────────────────── */
+// Не демо-кнопкою: у реального курʼєра її немає, і саме цей шлях зламала
+// перша версія фікса — після правильного пароля екран не перемальовувався,
+// кнопка застрягала на «Вхід…», людина лишалась на екрані входу.
+
+// У demo-збірці форма схована під розкривачкою; у продакшені вона одразу
+// на екрані, бо демо-кнопок там немає взагалі
+await page.evaluate(() =>
+  document.querySelector('details.login__manual')?.setAttribute('open', '')
+);
+await page.fill('#login', 'boss-rocket');
+await page.fill('#password', 'RocketBoss26');
+await page.click('#login-submit');
+
+const loggedIn = await page
+  .waitForSelector('#screen', { timeout: 8000 })
+  .then(() => true)
+  .catch(() => false);
+
+if (!loggedIn) {
+  const stuck = (await page.textContent('#login-submit').catch(() => '')) || '';
+  problems.push(`вхід не відбувся — кнопка показує ${JSON.stringify(stuck.trim())}`);
+  console.log('❌ 1/3 вхід не спрацював');
+  await finish();
+}
+console.log('✅ 1/3 вхід логіном і паролем');
+
+await page.click('[data-tab="orders"]');
+await page.waitForSelector('#no-name');
+
+/* ── 2. Заповнена форма переживає фонове оновлення ───────────────────────── */
 
 const NAME = 'Марина Коваль';
 const PHONE = '+380671112233';
@@ -116,14 +160,16 @@ const kept = await page.evaluate(() => ({
   focus: document.activeElement?.id || '',
 }));
 
-if (kept.name !== NAME) problems.push(`імʼя стерто: ${JSON.stringify(kept.name)}`);
-if (kept.phone !== PHONE) problems.push(`телефон стерто: ${JSON.stringify(kept.phone)}`);
-if (kept.street !== STREET) problems.push(`вулицю стерто: ${JSON.stringify(kept.street)}`);
-if (kept.focus !== 'no-address') problems.push(`фокус забрано: ${kept.focus || '(нічого)'}`);
+const wiped = [];
+if (kept.name !== NAME) wiped.push(`імʼя стерто: ${JSON.stringify(kept.name)}`);
+if (kept.phone !== PHONE) wiped.push(`телефон стерто: ${JSON.stringify(kept.phone)}`);
+if (kept.street !== STREET) wiped.push(`вулицю стерто: ${JSON.stringify(kept.street)}`);
+if (kept.focus !== 'no-address') wiped.push(`фокус забрано: ${kept.focus || '(нічого)'}`);
 
-console.log(problems.length ? '❌ 1/2 набране не вціліло' : '✅ 1/2 набране й фокус на місці');
+problems.push(...wiped);
+console.log(wiped.length ? '❌ 2/3 набране не вціліло' : '✅ 2/3 набране й фокус на місці');
 
-/* ── 2. Порожня форма НЕ блокує оновлення ────────────────────────────────── */
+/* ── 3. Порожня форма НЕ блокує оновлення ────────────────────────────────── */
 
 await page.evaluate(() => {
   for (const el of document.querySelectorAll('input, textarea')) el.value = '';
@@ -137,15 +183,6 @@ const frozen = await page.evaluate(
   () => document.querySelector('#screen')?.dataset.probe === 'ще тут'
 );
 if (frozen) problems.push('екран завмер: порожня форма зупинила фонове оновлення');
+console.log(frozen ? '❌ 3/3 екран не перемальовується' : '✅ 3/3 екран оновлюється сам');
 
-console.log(frozen ? '❌ 2/2 екран не перемальовується' : '✅ 2/2 екран оновлюється сам');
-
-await browser.close();
-server.close();
-
-if (problems.length) {
-  console.error('\n❌ смоук форми не пройдено:');
-  for (const p of problems) console.error(`   • ${p}`);
-  process.exit(1);
-}
-console.log('\n✅ смоук форми: 2/2');
+await finish();
