@@ -210,6 +210,22 @@ export function createOrder(payload) {
   return read('createOrder', () => adapter.createOrder(payload));
 }
 
+/**
+ * Операції закладу. У продакшені їх виконує кабінет на cstllife
+ * (ADR-0001); поки той не підключений — адмін (ADR-0012).
+ */
+export function businessAcceptOrder(orderId, minutes) {
+  return read('businessAcceptOrder', () => adapter.businessAcceptOrder(orderId, minutes));
+}
+
+export function businessMarkReady(orderId) {
+  return read('businessMarkReady', () => adapter.businessMarkReady(orderId));
+}
+
+export function businessRejectOrder(orderId, reason) {
+  return read('businessRejectOrder', () => adapter.businessRejectOrder(orderId, reason));
+}
+
 export function createCourier(data) {
   return read('createCourier', () => adapter.createCourier(data));
 }

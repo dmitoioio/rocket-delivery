@@ -26,9 +26,11 @@ import {
   elapsed,
 } from '../shared/ui.js';
 import { geoMap } from '../shared/map.js';
+import * as orders from './orders.js';
 
 const TABS = [
   { key: 'dashboard', label: 'Дашборд', icon: icons.dashboard },
+  { key: 'orders', label: 'Замовлення', icon: icons.queue },
   { key: 'attention', label: 'Увага', icon: icons.active },
   { key: 'cash', label: 'Готівка', icon: icons.cash },
   { key: 'economy', label: 'Економіка', icon: icons.chart },
@@ -78,6 +80,8 @@ export function renderTab(state, tab) {
   const a = state.admin;
 
   switch (tab) {
+    case 'orders':
+      return orders.render(a);
     case 'attention':
       return attention(a);
     case 'cash':
@@ -712,6 +716,13 @@ function orderSheet(state, orderId) {
 /* ── Дії ────────────────────────────────────────────────────────────────── */
 
 export async function handle(action, el) {
+  // Дії вкладки «Замовлення» живуть у своєму модулі — інакше цей switch
+  // виріс би ще на шість гілок і перестав читатись
+  if (await orders.handle(action, el)) {
+    await load();
+    return true;
+  }
+
   switch (action) {
     case 'open-create-courier':
       setState({ sheet: { type: 'create-courier' } });

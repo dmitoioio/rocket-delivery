@@ -406,6 +406,23 @@ export async function createOrder(payload) {
   );
 }
 
+/* ── Операції закладу ───────────────────────────────────────────────────────
+   У продакшені їх виконує кабінет на cstllife (ADR-0001). Поки той не
+   підключений — адмін через вкладку «Замовлення» (ADR-0012). Функції
+   ті самі, які викликатиме cstllife: правила проходять один шлях. */
+
+export async function businessAcceptOrder(orderId, minutes) {
+  return toApp(await call('business_accept_order', { p_order: orderId, p_minutes: minutes }));
+}
+
+export async function businessMarkReady(orderId) {
+  return toApp(await call('business_mark_ready', { p_order: orderId }));
+}
+
+export async function businessRejectOrder(orderId, reason) {
+  return toApp(await call('business_reject_order', { p_order: orderId, p_reason: reason }));
+}
+
 /**
  * Створення курʼєра йде через Edge Function із ключем service_role:
  * пароль генерується сервером і показується адміну рівно один раз (B17).

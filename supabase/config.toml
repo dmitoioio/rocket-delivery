@@ -1,0 +1,20 @@
+# Паспорт проєкту для Supabase CLI та інтеграції з GitHub.
+# Без цього файлу ні `supabase link`, ні автонакат міграцій не працюють.
+
+project_id = "rocket-delivery"
+
+[db]
+# Має збігатися з версією Postgres у проєкті Supabase
+major_version = 15
+
+[db.migrations]
+# ⚠️ Накочується ТІЛЬКИ supabase/migrations/.
+# supabase/shim/ лежить окремо навмисно: він створює ролі anon,
+# authenticated і service_role та схему auth, які в Supabase УЖЕ Є.
+# Накат шима в реальний проєкт зламав би його. Шим потрібен лише
+# локальному Postgres, де цього немає.
+schema_paths = []
+
+[functions.create-courier]
+# Функцію викликає адмін із застосунку — токен перевіряється всередині
+verify_jwt = true

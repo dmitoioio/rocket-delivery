@@ -36,16 +36,32 @@ jobs:
 
       - run: npm ci
 
-      # ── Збірка demo, а не production ──────────────────────────────────────
-      # GitHub Pages — статичний хостинг без бекенду. Поки немає реального
-      # Supabase, production-збірка дала б білий екран із помилкою
-      # «Supabase не налаштований». Тому Pages віддає demo-збірку з моковим
-      # адаптером: вона показує повністю робочу бізнес-логіку в памʼяті
-      # браузера. Це свідоме рішення, а не недогляд.
-      - name: Збірка demo
+      # ── Ключі мають бути ─────────────────────────────────────────────────
+      # Раніше тут збиралось demo, бо реального Supabase не було. Тепер
+      # живий сайт — це справжній застосунок, і мовчазне падіння назад
+      # у demo було б найгіршим з можливих: сайт відкривався б, показував
+      # знайомі дані й виглядав робочим, поки насправді жодне замовлення
+      # нікуди не йшло. Тому — гучна помилка замість тихої підміни.
+      - name: Перевірити ключі
+        env:
+          URL: ${{ secrets.VITE_SUPABASE_URL }}
+          KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "::error::Немає секретів VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY."
+            echo "::error::Додати: Settings → Secrets and variables → Actions → New repository secret."
+            echo "::error::Значення — у Supabase: Project Settings → API (Project URL і anon public)."
+            echo "::error::Покрокова інструкція: docs/15-setup-supabase.md"
+            exit 1
+          fi
+          echo "OK — ключі на місці"
+
+      - name: Збірка production
         run: npm run build
         env:
-          VITE_APP_ENV: demo
+          VITE_APP_ENV: production
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
       # GitHub Pages інакше проганяє все через Jekyll і ігнорує деякі файли
       - name: Вимкнути Jekyll

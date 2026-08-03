@@ -5,6 +5,35 @@ import { publicEnvDefine, buildAliases, isProduction } from './config.mjs';
 
 const OUT = 'dist';
 
+/**
+ * Продакшн без ключів — це білий екран, а не застосунок.
+ *
+ * ⚠️ Падати тут ОБОВʼЯЗКОВО, і саме гучно. Мовчазна збірка «успішна»,
+ * після якої сайт відкривається й нічого не працює, — найгірший
+ * можливий результат: виглядає як складна помилка, а насправді
+ * забутий рядок у налаштуваннях.
+ *
+ * Як налаштувати — docs/15-setup-supabase.md, крок 3.
+ */
+if (isProduction() && (!process.env.VITE_SUPABASE_URL || !process.env.VITE_SUPABASE_ANON_KEY)) {
+  console.error(`
+❌ Продакшн-збірка без підключення до бази.
+
+Немає: ${!process.env.VITE_SUPABASE_URL ? 'VITE_SUPABASE_URL ' : ''}${
+    !process.env.VITE_SUPABASE_ANON_KEY ? 'VITE_SUPABASE_ANON_KEY' : ''
+  }
+
+Значення беруться в Supabase: Project Settings → API
+   Project URL  → VITE_SUPABASE_URL
+   anon public  → VITE_SUPABASE_ANON_KEY
+
+Покроково: docs/15-setup-supabase.md
+
+Щоб зібрати демо без бази:  VITE_APP_ENV=demo npm run build
+`);
+  process.exit(1);
+}
+
 await rm(OUT, { recursive: true, force: true });
 await mkdir(OUT, { recursive: true });
 

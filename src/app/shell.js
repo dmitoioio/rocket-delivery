@@ -66,11 +66,7 @@ function render() {
       <header class="nav">
         <div class="nav__title">${esc(mod.title(tab))}${sub ? `<small>${esc(sub)}</small>` : ''}</div>
         <button class="nav__btn" data-action="refresh" aria-label="Оновити">${icons.refresh()}</button>
-        ${
-          isAdmin || area === 'courier'
-            ? ''
-            : `<button class="nav__btn" data-action="switch-role" aria-label="Змінити роль">${icons.back()}</button>`
-        }
+        ${navExit(area, isAdmin)}
       </header>
       <main class="shell__body" id="screen">${mod.renderTab(state, tab)}</main>
       ${mod.tabsBar(state, tab)}
@@ -83,6 +79,26 @@ function render() {
 
   // Фокус на поле PIN одразу — курʼєр стоїть під дверима
   root.querySelector('#pin-input')?.focus();
+}
+
+/**
+ * Кнопка виходу в шапці.
+ *
+ * ⚠️ Адмін ДОВГО не мав її взагалі: у нього немає вкладки профілю
+ * (вона є тільки в курʼєра), а кнопка зміни ролі показувалась усім,
+ * КРІМ адміна й курʼєра. Тобто зайшовши адміністратором, вийти було
+ * неможливо — ні передати пристрій, ні перевірити курʼєрський вхід.
+ * У демо це не помічалось, бо там завжди можна скинути стан.
+ *
+ * Курʼєру кнопка тут не потрібна: у нього вихід у профілі, а місце
+ * в шапці на телефоні дорожче.
+ */
+function navExit(area, isAdmin) {
+  if (isAdmin) {
+    return `<button class="nav__btn" data-action="logout" aria-label="Вийти">${icons.back()}</button>`;
+  }
+  if (area === 'courier') return '';
+  return `<button class="nav__btn" data-action="switch-role" aria-label="Змінити роль">${icons.back()}</button>`;
 }
 
 /**
