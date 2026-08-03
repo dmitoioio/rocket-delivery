@@ -20,6 +20,7 @@
     "format": "prettier --write \"**/*.{js,mjs,json,css,html}\"",
     "format:check": "prettier --check \"**/*.{js,mjs,json,css,html}\"",
     "smoke:prod": "node scripts/smoke-prod.mjs",
+    "smoke:form": "node scripts/smoke-form.mjs",
     "db:bundle": "node scripts/bundle-sql.mjs",
     "db:diff": "supabase db diff -f",
     "db:push": "supabase db push",
