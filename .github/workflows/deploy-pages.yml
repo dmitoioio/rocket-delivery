@@ -63,6 +63,28 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
+      # ── Не публікувати білий екран ───────────────────────────────────────
+      # Саме тут не вистачало перевірки. Збірка «успішна» ще нічого не
+      # означає: одного разу вона зібралась, опублікувалась і падала до
+      # першого рядка розмітки (`process is not defined`). CI при цьому
+      # був зелений — він перевіряв вміст файлу, а не те, чи він
+      # запускається. Тепер сторінку відкривають ДО публікації.
+      - name: Слова process у бандлі немає
+        run: |
+          if grep -oE '\bprocess\.env' dist/app.js 2>/dev/null; then
+            echo "::error::У бандлі лишилось process.env — збірник не підставив значення."
+            exit 1
+          fi
+          echo "OK"
+
+      - name: Браузер для смоуку
+        run: npx playwright install --with-deps chromium
+
+      - name: Збірка відкривається
+        run: npm run smoke:prod
+        env:
+          SMOKE_STRICT: '1'
+
       # GitHub Pages інакше проганяє все через Jekyll і ігнорує деякі файли
       - name: Вимкнути Jekyll
         run: touch dist/.nojekyll
