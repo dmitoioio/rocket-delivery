@@ -9,7 +9,7 @@
  *
  *   «я не можу вписати, мене просто викидає і весь текст пропадає»
  *
- * Перевіряються ТРИ речі, бо однобока перевірка тут гірша за жодну:
+ * Перевіряються ЧОТИРИ речі, бо однобока перевірка тут гірша за жодну:
  * фікс, який просто вимкнув би оновлення екрана, пройшов би другу
  * перевірку й зламав дві інші. Що й сталось — перша версія фікса
  * зберегла текст і зламала вхід.
@@ -17,6 +17,8 @@
  *   1. Вхід логіном і паролем узагалі працює.
  *   2. Форма заповнена → фонове оновлення НЕ чіпає ні текст, ні фокус.
  *   3. Форма порожня   → фонове оновлення таки перемальовує екран.
+ *   4. Повідомлення про помилку видно ПОВЕРХ модальної шторки, а не під
+ *      нею — інакше відмова сервера виглядає як зламана кнопка.
  *
  * Прокрутки серед перевірок немає навмисно: я підозрював той самий баг
  * і виміряв — `.shell` має `min-height: 100dvh`, тож гортається документ,
@@ -106,7 +108,7 @@ async function finish() {
     for (const p of problems) console.error(`   • ${p}`);
     process.exit(1);
   }
-  console.log('\n✅ смоук оболонки: 3/3');
+  console.log('\n✅ смоук оболонки: 4/4');
   process.exit(0);
 }
 
@@ -132,10 +134,10 @@ const loggedIn = await page
 if (!loggedIn) {
   const stuck = (await page.textContent('#login-submit').catch(() => '')) || '';
   problems.push(`вхід не відбувся — кнопка показує ${JSON.stringify(stuck.trim())}`);
-  console.log('❌ 1/3 вхід не спрацював');
+  console.log('❌ 1/4 вхід не спрацював');
   await finish();
 }
-console.log('✅ 1/3 вхід логіном і паролем');
+console.log('✅ 1/4 вхід логіном і паролем');
 
 await page.click('[data-tab="orders"]');
 await page.waitForSelector('#no-name');
@@ -167,7 +169,7 @@ if (kept.street !== STREET) wiped.push(`вулицю стерто: ${JSON.string
 if (kept.focus !== 'no-address') wiped.push(`фокус забрано: ${kept.focus || '(нічого)'}`);
 
 problems.push(...wiped);
-console.log(wiped.length ? '❌ 2/3 набране не вціліло' : '✅ 2/3 набране й фокус на місці');
+console.log(wiped.length ? '❌ 2/4 набране не вціліло' : '✅ 2/4 набране й фокус на місці');
 
 /* ── 3. Порожня форма НЕ блокує оновлення ────────────────────────────────── */
 
@@ -183,6 +185,66 @@ const frozen = await page.evaluate(
   () => document.querySelector('#screen')?.dataset.probe === 'ще тут'
 );
 if (frozen) problems.push('екран завмер: порожня форма зупинила фонове оновлення');
-console.log(frozen ? '❌ 3/3 екран не перемальовується' : '✅ 3/3 екран оновлюється сам');
+console.log(frozen ? '❌ 3/4 екран не перемальовується' : '✅ 3/4 екран оновлюється сам');
+
+/* ── 4. Повідомлення видно поверх модальної шторки ───────────────────────── */
+// «Кнопка не працює»: запит ішов, сервер відмовляв, пояснення малювалось
+// ПІД темним тлом шторки (.toast-host мав z-index 60 проти 70 у шторки).
+// Найдорожчий випадок — курʼєр під дверима тисне «Готово» без фото.
+//
+// Перевіряється саме видимість, а не значення z-index: `getComputedStyle`
+// підтвердив би, що число дорівнює 80, і нічого не сказав би про те, чи
+// людина це побачить.
+
+await page.click('[data-tab="couriers"]');
+await page.waitForSelector('[data-action="open-create-courier"]');
+await page.click('[data-action="open-create-courier"]');
+await page.waitForSelector('.sheet-backdrop');
+
+// Тиснемо «Створити» з порожніми полями — застосунок відмовляє й показує
+// причину. Саме цей шлях і виглядав як «кнопка не працює»
+await page.click('[data-action="create-courier"]');
+
+const shown = await page
+  .waitForSelector('.toast', { timeout: 4000 })
+  .then(() => true)
+  .catch(() => false);
+
+if (!shown) {
+  problems.push('відмова не показала жодного повідомлення');
+  console.log('❌ 4/4 повідомлення не зʼявилось');
+} else {
+  const onTop = await page.evaluate(() => {
+    const node = document.querySelector('.toast');
+    const host = node.parentElement;
+
+    // ⚠️ У `.toast-host` стоїть `pointer-events: none` — щоб тост не
+    // перехоплював натискання. Але через це `elementFromPoint` дивиться
+    // КРІЗЬ нього й завжди повертає те, що під ним. Перша версія цієї
+    // перевірки саме так і «знайшла» баг на вже виправленому коді.
+    // Знімаємо рівно на час заміру: нас цікавить порядок шарів, а
+    // hit-test — лише інструмент, яким його видно.
+    const prev = host.style.pointerEvents;
+    host.style.pointerEvents = 'auto';
+
+    const box = node.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+
+    host.style.pointerEvents = prev;
+
+    return {
+      ok: node === hit || node.contains(hit),
+      hit: hit?.className || '(нічого)',
+      text: node.textContent.trim(),
+    };
+  });
+
+  if (!onTop.ok) {
+    problems.push(`повідомлення «${onTop.text}» сховане — у його точці лежить .${onTop.hit}`);
+  }
+  console.log(
+    onTop.ok ? `✅ 4/4 видно поверх шторки: «${onTop.text}»` : '❌ 4/4 повідомлення сховане'
+  );
+}
 
 await finish();

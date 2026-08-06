@@ -432,8 +432,41 @@ export async function createCourier({ fullName, phone }) {
   const { data, error } = await db().functions.invoke('create-courier', {
     body: { fullName, phone },
   });
-  if (error) throw fail(error);
+  if (error) throw await functionError(error);
   return data;
+}
+
+/**
+ * Розшифровка відмови Edge Function.
+ *
+ * ⚠️ `supabase-js` на будь-який не-2xx кидає рівно один рядок:
+ * «Edge Function returned a non-2xx status code». Наше пояснення —
+ * «Тільки адміністратор може створювати курʼєрів», «Вкажи повне імʼя» —
+ * лежить у ТІЛІ відповіді й до людини не доходило взагалі.
+ *
+ * Окремо розпізнається найчастіший випадок: функції просто немає.
+ * Її треба розгорнути один раз у дашборді, і без цієї підказки симптом
+ * виглядає як зламана кнопка — саме так його й побачив власник.
+ */
+async function functionError(error) {
+  const res = error?.context;
+
+  // Мережа не дійшла або 404 — функцію не розгорнуто
+  if (!res || res.status === 404) {
+    return err.server(
+      'Серверну функцію create-courier не розгорнуто. Як це зробити — крок 6 у docs/15-setup-supabase.md'
+    );
+  }
+
+  const body = await res
+    .clone()
+    .json()
+    .catch(() => null);
+  const message = body?.error || error.message;
+
+  if (res.status === 403) return err.permission(message);
+  if (res.status === 400) return err.validation(message);
+  return err.server(message);
 }
 
 export async function setCourierActive(courierId, isActive) {
