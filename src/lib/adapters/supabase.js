@@ -151,8 +151,34 @@ export async function signOut() {
    Черга йде з VIEW `courier_queue`, а не з таблиці: там фізично немає
    телефону, адреси й коду підтвердження (B15, B41, docs/05). */
 
+/**
+ * 🛑 Читання не має писати частіше, ніж раз на хвилину.
+ *
+ * `tick()` рахує надбавку за очікування, і колись він писав при кожному
+ * виклику. Наслідок був такий: запис → подія Realtime → клієнт перечитує
+ * дані → знову `tick()` → знову запис. Екран крутився з періодом ~1.2 с
+ * і не давав ні набрати текст, ні втримати фокус.
+ *
+ * Корінь виправлено в базі (міграція 20260808170000: пишемо лише те, що
+ * справді змінилось). Але обмеження лишається тут навмисно — як другий
+ * замок: якщо в базу колись повернеться безумовний запис, коло стане
+ * повільним незручством раз на хвилину, а не паралічем щосекунди.
+ *
+ * Ціна: надбавка може відставати до 60 секунд. Кроки надбавки — від
+ * 10 хвилин, тож на екрані це непомітно.
+ */
+const TICK_EVERY_MS = 60000;
+let lastTickAt = 0;
+
+async function tickThrottled() {
+  const now = Date.now();
+  if (now - lastTickAt < TICK_EVERY_MS) return;
+  lastTickAt = now;
+  await call('tick');
+}
+
 export async function fetchQueue() {
-  await call('tick'); // надбавка за очікування рахується сервером (B35)
+  await tickThrottled(); // надбавка за очікування рахується сервером (B35)
   const { data, error } = await db()
     .from('courier_queue')
     .select('*')
@@ -291,7 +317,7 @@ export async function declareCashHandoff(courierId, amount) {
 /* ── Адмін ─────────────────────────────────────────────────────────────────── */
 
 export async function fetchAdminOverview() {
-  await call('tick');
+  await tickThrottled();
   const s = db();
   const [orders, couriers, handoffs, earnings, events, payrolls, locations, business] =
     await Promise.all([
