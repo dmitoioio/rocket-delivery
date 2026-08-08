@@ -81,6 +81,25 @@ function hasUnsavedInput() {
 let shownSession = null;
 let shownRoute = null;
 
+/**
+ * Лічильники поруч зі штампом збірки: скільки разів екран перемалювався
+ * і скільки повідомлень надіслала база від моменту завантаження сторінки.
+ *
+ * Навіщо це на екрані, а не в консолі. «Смикається» — це відчуття, і за
+ * ним може стояти що завгодно: коло перечитувань, анімація, стрибок
+ * розкладки. Три спроби вгадати причину наосліп коштували вечора. Тепер
+ * власник просто називає два числа зі свого телефона, і причина звужується
+ * до однієї:
+ *
+ *   ↻ швидко росте, ⚡ теж   → база сама себе будить (запис при читанні)
+ *   ↻ швидко росте, ⚡ = 0   → коло всередині застосунку
+ *   ↻ майже не росте         → це не перемальовування, а щось візуальне
+ *
+ * Коштує рядок тексту й нічого не важить у роботі.
+ */
+let renders = 0;
+let dbEvents = 0;
+
 function render() {
   const state = getState();
 
@@ -107,6 +126,7 @@ function render() {
 
   shownSession = state.session;
   shownRoute = state.route;
+  renders++;
 
   if (!state.session) {
     root.innerHTML = login.render();
@@ -123,7 +143,7 @@ function render() {
   root.innerHTML = `
     <div class="shell ${isAdmin ? 'shell--admin' : 'shell--phone'}">
       ${netbar(state)}
-      <div class="buildbar num">${esc(versionLabel)}</div>
+      <div class="buildbar num">${esc(versionLabel)} · ↻${renders} · ⚡${dbEvents}</div>
       <header class="nav">
         <div class="nav__title">${esc(mod.title(tab))}${sub ? `<small>${esc(sub)}</small>` : ''}</div>
         <button class="nav__btn" data-action="refresh" aria-label="Оновити">${icons.refresh()}</button>
@@ -327,7 +347,10 @@ let unwatch = null;
  * сповільнюється вчетверо (15 с → 60 с), але не зникає.
  */
 function startWatching() {
-  unwatch = db.watchOrders(() => scheduleReload());
+  unwatch = db.watchOrders(() => {
+    dbEvents++;
+    scheduleReload();
+  });
   watching = unwatch !== null;
 }
 
