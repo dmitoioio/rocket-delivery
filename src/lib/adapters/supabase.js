@@ -63,6 +63,12 @@ const MESSAGE = {
   courier_inactive: 'Обліковий запис деактивовано',
   nothing_to_hand_off: 'Немає готівкових замовлень до здачі',
   nothing_to_pay: 'Немає нарахувань за період',
+  // Привʼязка курʼєра до наявного облікового запису
+  not_admin: 'Тільки адміністратор може додавати курʼєрів',
+  full_name_required: 'Вкажи повне імʼя курʼєра',
+  auth_user_not_found:
+    'Такої пошти немає в Supabase. Спершу створи обліковий запис: Authentication → Users → Add user',
+  courier_already_linked: 'До цієї пошти вже привʼязаний курʼєр',
 };
 
 function fail(error) {
@@ -448,6 +454,28 @@ export async function createCourier({ fullName, phone }) {
  * Її треба розгорнути один раз у дашборді, і без цієї підказки симптом
  * виглядає як зламана кнопка — саме так його й побачив власник.
  */
+/**
+ * Другий шлях: обліковий запис уже створений у дашборді Supabase,
+ * застосунок лише привʼязує до нього картку курʼєра.
+ *
+ * Навіщо він є. Перший шлях (createCourier) вимагає розгорнутої Edge
+ * Function, а розгорнути її може тільки власник проєкту. Поки він цього
+ * не зробив, кнопка не могла спрацювати НІКОЛИ — застосунок упирався в
+ * дію, яку сам виконати не здатен. Тут не потрібно нічого, крім бази.
+ *
+ * Правила (хто має право, чи існує пошта, чи не привʼязано вже) —
+ * у функції бази, не тут. Клієнтська перевірка захистом не є.
+ */
+export async function linkCourier({ email, fullName, phone }) {
+  return toApp(
+    await call('link_courier', {
+      p_email: email,
+      p_full_name: fullName,
+      p_phone: phone || null,
+    })
+  );
+}
+
 async function functionError(error) {
   const res = error?.context;
 

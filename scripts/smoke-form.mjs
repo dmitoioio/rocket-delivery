@@ -19,6 +19,8 @@
  *   3. Форма порожня   → фонове оновлення таки перемальовує екран.
  *   4. Повідомлення про помилку видно ПОВЕРХ модальної шторки, а не під
  *      нею — інакше відмова сервера виглядає як зламана кнопка.
+ *   5. Курʼєра можна додати без Edge Function — привʼязкою до наявного
+ *      облікового запису.
  *
  * Прокрутки серед перевірок немає навмисно: я підозрював той самий баг
  * і виміряв — `.shell` має `min-height: 100dvh`, тож гортається документ,
@@ -108,7 +110,7 @@ async function finish() {
     for (const p of problems) console.error(`   • ${p}`);
     process.exit(1);
   }
-  console.log('\n✅ смоук оболонки: 4/4');
+  console.log('\n✅ смоук оболонки: 5/5');
   process.exit(0);
 }
 
@@ -134,10 +136,10 @@ const loggedIn = await page
 if (!loggedIn) {
   const stuck = (await page.textContent('#login-submit').catch(() => '')) || '';
   problems.push(`вхід не відбувся — кнопка показує ${JSON.stringify(stuck.trim())}`);
-  console.log('❌ 1/4 вхід не спрацював');
+  console.log('❌ 1/5 вхід не спрацював');
   await finish();
 }
-console.log('✅ 1/4 вхід логіном і паролем');
+console.log('✅ 1/5 вхід логіном і паролем');
 
 await page.click('[data-tab="orders"]');
 await page.waitForSelector('#no-name');
@@ -169,7 +171,7 @@ if (kept.street !== STREET) wiped.push(`вулицю стерто: ${JSON.string
 if (kept.focus !== 'no-address') wiped.push(`фокус забрано: ${kept.focus || '(нічого)'}`);
 
 problems.push(...wiped);
-console.log(wiped.length ? '❌ 2/4 набране не вціліло' : '✅ 2/4 набране й фокус на місці');
+console.log(wiped.length ? '❌ 2/5 набране не вціліло' : '✅ 2/5 набране й фокус на місці');
 
 /* ── 3. Порожня форма НЕ блокує оновлення ────────────────────────────────── */
 
@@ -185,7 +187,7 @@ const frozen = await page.evaluate(
   () => document.querySelector('#screen')?.dataset.probe === 'ще тут'
 );
 if (frozen) problems.push('екран завмер: порожня форма зупинила фонове оновлення');
-console.log(frozen ? '❌ 3/4 екран не перемальовується' : '✅ 3/4 екран оновлюється сам');
+console.log(frozen ? '❌ 3/5 екран не перемальовується' : '✅ 3/5 екран оновлюється сам');
 
 /* ── 4. Повідомлення видно поверх модальної шторки ───────────────────────── */
 // «Кнопка не працює»: запит ішов, сервер відмовляв, пояснення малювалось
@@ -243,8 +245,28 @@ if (!shown) {
     problems.push(`повідомлення «${onTop.text}» сховане — у його точці лежить .${onTop.hit}`);
   }
   console.log(
-    onTop.ok ? `✅ 4/4 видно поверх шторки: «${onTop.text}»` : '❌ 4/4 повідомлення сховане'
+    onTop.ok ? `✅ 4/5 видно поверх шторки: «${onTop.text}»` : '❌ 4/5 повідомлення сховане'
   );
 }
+
+/* ── 5. Курʼєра можна додати без Edge Function ───────────────────────────── */
+// Автоматичне створення вимагає розгорнутої Edge Function, і поки власник
+// її не розгорнув, кнопка не могла спрацювати НІКОЛИ. Другий шлях —
+// привʼязка до вже наявного облікового запису — має працювати завжди.
+
+await page.fill('#nc-name', 'Петро Коваль');
+await page.fill('#nc-email', 'kurier.petro@example.test');
+await page.click('[data-action="link-courier"]');
+
+const linked = await page
+  .waitForSelector('.sheet__title:text("Курʼєра створено")', { timeout: 6000 })
+  .then(() => true)
+  .catch(() => false);
+
+if (!linked) {
+  const said = (await page.textContent('.toast').catch(() => '')) || '(жодного повідомлення)';
+  problems.push(`привʼязка курʼєра не вдалась: ${said.trim()}`);
+}
+console.log(linked ? '✅ 5/5 курʼєра привʼязано без Edge Function' : '❌ 5/5 привʼязка не вдалась');
 
 await finish();

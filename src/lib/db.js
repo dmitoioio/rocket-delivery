@@ -230,6 +230,10 @@ export function createCourier(data) {
   return read('createCourier', () => adapter.createCourier(data));
 }
 
+export function linkCourier(data) {
+  return read('linkCourier', () => adapter.linkCourier(data));
+}
+
 export function setCourierActive(courierId, isActive) {
   return read('setCourierActive', () => adapter.setCourierActive(courierId, isActive));
 }

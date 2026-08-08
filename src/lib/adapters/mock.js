@@ -1349,6 +1349,45 @@ export async function createCourier({ fullName, phone }) {
   return { login, password };
 }
 
+/**
+ * Привʼязка до вже наявного облікового запису — другий шлях створення
+ * курʼєра, той, що не потребує Edge Function (див. supabase.js).
+ *
+ * Тут «наявний обліковий запис» імітується просто наявністю пошти: у
+ * демо Supabase Auth немає. Важлива не імітація, а те, що форма відповіді
+ * й перелік відмов ті самі, що в бази — інакше екран, налагоджений на
+ * демо, поводився б інакше на живій системі.
+ */
+export async function linkCourier({ email, fullName, phone }) {
+  await lag(280);
+
+  const mail = String(email || '')
+    .trim()
+    .toLowerCase();
+  if (!mail.includes('@')) throw err.validation('Вкажи пошту облікового запису');
+  if ((fullName || '').trim().length < 3) throw err.validation('Вкажи повне імʼя курʼєра');
+  if (db.couriers.some((c) => c.email === mail)) {
+    throw err.conflict('До цієї пошти вже привʼязаний курʼєр');
+  }
+
+  const id = `c${db.couriers.length + 1}`;
+  db.couriers.push({
+    id,
+    fullName: fullName.trim(),
+    phone: (phone || '').trim(),
+    email: mail,
+    vehicle: 'escooter',
+    status: 'offline',
+    maxActiveOrders: config.maxActiveOrders,
+    cashOnHand: 0,
+    completedDeliveries: 0,
+    isActive: true,
+  });
+
+  persist();
+  return clone(db.couriers[db.couriers.length - 1]);
+}
+
 export async function setCourierActive(courierId, isActive) {
   await lag(160);
   const c = courierById(courierId);

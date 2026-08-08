@@ -636,28 +636,34 @@ export function renderOverlay(state) {
   return '';
 }
 
+/**
+ * Два шляхи додати курʼєра — і це не надмірність.
+ *
+ * Перший (автоматичний) вимагає розгорнутої Edge Function: створити
+ * обліковий запис у Supabase Auth можна лише ключем service_role, якому
+ * не місце в браузері. Але розгорнути функцію може тільки власник
+ * проєкту — і поки він цього не зробив, кнопка не спрацьовувала НІКОЛИ.
+ *
+ * Другий (привʼязка) не потребує нічого поза базою: обліковий запис
+ * створюється в дашборді — дію власник уже робив, коли створював себе.
+ * Саме тому шлях і другий за порядком, але робочий завжди.
+ */
 function createCourierSheet(sheet) {
-  if (sheet.result) {
-    return `<div class="sheet-backdrop" data-action="close-sheet">
-      <div class="sheet" data-stop role="dialog" aria-modal="true">
-        <h2 class="sheet__title">Курʼєра створено</h2>
-        <div class="card">
-          <div class="row"><span class="mut">Логін</span>
-            <strong class="num">${esc(sheet.result.login)}</strong></div>
-          <div class="row"><span class="mut">Пароль</span>
-            <strong class="num">${esc(sheet.result.password)}</strong></div>
-        </div>
-        <div class="callout callout--warn" style="margin-top:14px">
-          <strong>Пароль показується один раз</strong> — саме так система й
-          працює. Ніде у відкритому вигляді він не зберігається. Передай його зараз.
-        </div>
-        <button class="btn btn-dark" data-action="close-sheet" style="margin-top:16px">Готово</button>
-      </div></div>`;
-  }
+  if (sheet.result) return createdCourierSheet(sheet.result);
+
+  // Показується замість тоста, коли Edge Function не розгорнута: тост
+  // зникає за секунди, а тут людині треба прочитати й перейти нижче
+  const hint = sheet.needsLink
+    ? `<div class="callout callout--warn" style="margin-top:12px">
+        <strong>Автоматичне створення недоступне.</strong> ${esc(sheet.needsLink)}
+        <div style="margin-top:6px">Скористайся другим способом — він нижче.</div>
+      </div>`
+    : '';
 
   return `<div class="sheet-backdrop" data-action="close-sheet">
     <div class="sheet" data-stop role="dialog" aria-modal="true">
       <h2 class="sheet__title">Новий курʼєр</h2>
+
       <div class="field">
         <label class="field__label" for="nc-name">Імʼя та прізвище</label>
         <input class="input" id="nc-name" autocomplete="off">
@@ -666,8 +672,56 @@ function createCourierSheet(sheet) {
         <label class="field__label" for="nc-phone">Телефон</label>
         <input class="input num" id="nc-phone" inputmode="tel" autocomplete="off">
       </div>
-      <button class="btn btn-dark" data-action="create-courier">Створити</button>
-      <button class="btn btn-quiet" data-action="close-sheet" style="margin-top:4px">Назад</button>
+
+      <button class="btn btn-dark" data-action="create-courier">
+        Створити обліковий запис автоматично
+      </button>
+      <div class="tiny" style="margin-top:6px">
+        Логін і пароль вигадає сервер і покаже один раз.
+      </div>
+      ${hint}
+
+      <div class="h-sec" style="margin-top:20px">Або якщо запис уже є</div>
+      <div class="tiny" style="margin-bottom:8px">
+        Створи курʼєра в Supabase: <strong>Authentication → Users → Add user</strong>,
+        постав ✅ <strong>Auto Confirm User</strong> — і встав сюди ту саму пошту.
+        Пароль курʼєру передаєш ти, бо задав його там сам.
+      </div>
+      <div class="field">
+        <label class="field__label" for="nc-email">Пошта облікового запису</label>
+        <input class="input" id="nc-email" type="email" inputmode="email"
+               autocapitalize="none" spellcheck="false" autocomplete="off">
+      </div>
+      <button class="btn btn-rocket" data-action="link-courier">Привʼязати курʼєра</button>
+
+      <button class="btn btn-quiet" data-action="close-sheet" style="margin-top:10px">Назад</button>
+    </div></div>`;
+}
+
+/** Результат обох шляхів. Пароль є лише в автоматичного — у привʼязки його знає адмін. */
+function createdCourierSheet(result) {
+  const rows = result.password
+    ? `<div class="row"><span class="mut">Логін</span>
+         <strong class="num">${esc(result.login)}</strong></div>
+       <div class="row"><span class="mut">Пароль</span>
+         <strong class="num">${esc(result.password)}</strong></div>`
+    : `<div class="row"><span class="mut">Курʼєр</span>
+         <strong>${esc(result.fullName || '')}</strong></div>
+       <div class="row"><span class="mut">Заходить поштою</span>
+         <strong>${esc(result.email || '')}</strong></div>`;
+
+  const note = result.password
+    ? `<strong>Пароль показується один раз</strong> — саме так система й працює.
+       Ніде у відкритому вигляді він не зберігається. Передай його зараз.`
+    : `Пароль — той, який ти задав у Supabase. Курʼєр відкриває цей самий
+       сайт, вводить пошту й пароль і вмикає «на лінії».`;
+
+  return `<div class="sheet-backdrop" data-action="close-sheet">
+    <div class="sheet" data-stop role="dialog" aria-modal="true">
+      <h2 class="sheet__title">Курʼєра створено</h2>
+      <div class="card">${rows}</div>
+      <div class="callout callout--warn" style="margin-top:14px">${note}</div>
+      <button class="btn btn-dark" data-action="close-sheet" style="margin-top:16px">Готово</button>
     </div></div>`;
 }
 
@@ -736,7 +790,33 @@ export async function handle(action, el) {
         setState({ sheet: { type: 'create-courier', result } });
         await load();
       } catch (error) {
-        toast(error.message, 'danger');
+        // «Функції немає» — не помилка введення, а відсутній крок
+        // налаштування. Тост на це не годиться: він зникне раніше, ніж
+        // людина дочитає, і виглядатиме як мовчазна кнопка
+        if (/create-courier/.test(error.message)) {
+          setState({ sheet: { type: 'create-courier', needsLink: error.message } });
+        } else {
+          toast(error.message, 'danger', 4000);
+        }
+      }
+      return true;
+    }
+
+    case 'link-courier': {
+      const email = document.getElementById('nc-email')?.value || '';
+      const fullName = document.getElementById('nc-name')?.value || '';
+      const phone = document.getElementById('nc-phone')?.value || '';
+      try {
+        const courier = await db.linkCourier({ email, fullName, phone });
+        setState({
+          sheet: {
+            type: 'create-courier',
+            result: { fullName: courier.fullName, email: email.trim() },
+          },
+        });
+        await load();
+      } catch (error) {
+        toast(error.message, 'danger', 4500);
       }
       return true;
     }
